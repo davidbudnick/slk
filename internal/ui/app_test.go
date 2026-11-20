@@ -993,6 +993,31 @@ func TestApp_ClickOnThreadInThreadsViewOpensIt(t *testing.T) {
 	}
 }
 
+// The selected thread card is drawn in the focused selection colour only
+// while the threads list has the keyboard, so the list must learn where
+// the focus is on every render.
+func TestApp_ThreadsViewFollowsPanelFocus(t *testing.T) {
+	a := NewApp()
+	a.width = 160
+	a.height = 30
+	a.activeTeamID = "T1"
+	a.Update(ThreadsListLoadedMsg{TeamID: "T1", SubscriptionsAvailable: true, Summaries: []cache.ThreadSummary{
+		{ChannelID: "C_A", ThreadTS: "1.0", ParentTS: "1.0", ParentText: "alpha"},
+	}})
+	a.Update(ThreadsViewActivatedMsg{})
+
+	a.focusedPanel = PanelMessages
+	_ = a.View()
+	if !a.threadsView.Focused() {
+		t.Error("threads list with the keyboard must render focused")
+	}
+	a.focusedPanel = PanelSidebar
+	_ = a.View()
+	if a.threadsView.Focused() {
+		t.Error("threads list must render unfocused once the sidebar has the keyboard")
+	}
+}
+
 // TestApp_HandleEnterInThreadsViewOpensSelectedThread guards Bug A:
 // while the user is in the threads-list view, pressing Enter must
 // open the thread highlighted in `threadsView`, NOT the message

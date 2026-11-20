@@ -11,6 +11,7 @@ import (
 	"github.com/gammons/slk/internal/cache"
 	"github.com/gammons/slk/internal/config"
 	"github.com/gammons/slk/internal/core"
+	imgpkg "github.com/gammons/slk/internal/image"
 	"github.com/gammons/slk/internal/ui/messages"
 	"github.com/gammons/slk/internal/ui/styles"
 )
@@ -174,10 +175,12 @@ func TestChannelTitle_NamesTheOtherPeopleInADM(t *testing.T) {
 	group.Participants = [core.ThreadPreviewParticipants]string{"U1", "USELF", "U2"}
 	self := cache.ThreadSummary{ChannelID: "D2", ChannelType: "dm", ThreadTS: "3.0"}
 	self.Participants = [core.ThreadPreviewParticipants]string{"USELF"}
+	uncached := cache.ThreadSummary{ChannelID: "D3", ThreadTS: "4.0"}
+	uncached.Participants = [core.ThreadPreviewParticipants]string{"U2", "USELF"}
 	for _, c := range []struct {
 		s    cache.ThreadSummary
 		want string
-	}{{dm, "● alice"}, {group, "● alice, bob"}, {self, "● me.myself"}} {
+	}{{dm, "● alice"}, {group, "● alice, bob"}, {self, "● me.myself"}, {uncached, "● bob"}} {
 		if got := ansi.Strip(m.channelTitle(c.s, false)); got != c.want {
 			t.Errorf("channelTitle(%s) = %q, want %q", c.s.ChannelID, got, c.want)
 		}
@@ -318,6 +321,44 @@ func TestView_AvatarSitsBesideEachMessage(t *testing.T) {
 	m.HandleAvatarReady("U2")
 	if m.Version() == v {
 		t.Error("a landed avatar must re-render the view")
+	}
+}
+
+// A kitty avatar is a run of placeholder cells whose image ID rides in
+// the foreground colour and whose row and column ride in combining
+// marks. The card's border, padding and fill must leave each row of it
+// byte for byte as the avatar cache made it, or the terminal draws no
+// image.
+func TestView_KittyAvatarSurvivesTheCard(t *testing.T) {
+	pinClock(t)
+	row := func(mark rune) string {
+		var b strings.Builder
+		b.WriteString("\x1b[38;2;0;1;42m")
+		for col := 0; col < 4; col++ {
+			b.WriteRune(imgpkg.PlaceholderRune)
+			b.WriteRune(mark)
+			b.WriteRune([]rune{'̅', '̍', '̎', '̐'}[col])
+		}
+		return b.String() + "\x1b[39m"
+	}
+	top, bottom := row('̅'), row('̍')
+	m := New(names(), "USELF")
+	m.SetAvatarFunc(func(string) string { return top + "\n" + bottom })
+	m.SetSummaries([]cache.ThreadSummary{thread("1", 1, core.ThreadReply{UserID: "U2", Text: "the reply", TS: tsAt(time.Hour)})})
+	for _, selected := range []bool{true, false} {
+		m.SetFocused(selected)
+		out := m.View(30, 70)
+		if got := strings.Count(out, top); got != 2 {
+			t.Errorf("focused %v: avatar top rows intact = %d, want one per message (2)", selected, got)
+		}
+		if got := strings.Count(out, bottom); got != 2 {
+			t.Errorf("focused %v: avatar bottom rows intact = %d, want one per message (2)", selected, got)
+		}
+		for i, l := range strings.Split(out, "\n") {
+			if w := lipgloss.Width(l); w != 70 {
+				t.Errorf("focused %v: row %d is %d wide beside a kitty avatar", selected, i, w)
+			}
+		}
 	}
 }
 

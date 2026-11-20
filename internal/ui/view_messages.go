@@ -116,8 +116,11 @@ func (a *App) renderMessagesRegion(frame panelLayoutFrame, themeVer int64, previ
 // no compose / typing row. Whole panel is cached on
 // threadsView.Version.
 //
-// SetUserNames and SetSelfUserID MUST run BEFORE snapshotting
-// threadsView.Version: both are equality-checked in the model,
+// SetFocused gives the selected card the focused selection colour while
+// the list has the keyboard, as the message panes' selection has.
+//
+// SetUserNames, SetSelfUserID and SetFocused MUST run BEFORE snapshotting
+// threadsView.Version: all three are equality-checked in the model,
 // so identical input is a no-op, but reading Version() before
 // the Set calls would mean the cache key reflects a pre-update
 // version and the stored output would later miss its own key.
@@ -131,6 +134,7 @@ func (a *App) renderMessagesRegion(frame panelLayoutFrame, themeVer int64, previ
 func (a *App) renderThreadsViewPanel(msgWidth, msgBorder, contentHeight int, msgFocused bool, msgLayoutKey int64) string {
 	a.threadsView.SetUserNames(a.userNames)
 	a.threadsView.SetSelfUserID(a.currentUserID)
+	a.threadsView.SetFocused(msgFocused)
 	tvVersion := a.threadsView.Version()
 	c := &a.renderCache.msgPanel
 	if c.hit(tvVersion, msgWidth, contentHeight, msgLayoutKey) {
