@@ -143,6 +143,16 @@ func (t *BrowserTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 				return nil, err
 			}
 		}
+	} else if t.Dest == DestImage {
+		// A link preview's image on a host that is not Slack's. None
+		// of the Slack set goes with it, but some CDNs refuse Go's
+		// default User-Agent outright (i.cbc.ca resets the stream),
+		// which left the preview on "loading…".
+		req = req.Clone(req.Context())
+		if req.Header == nil {
+			req.Header = http.Header{}
+		}
+		setIfMissing(req.Header, "User-Agent", UserAgent())
 	}
 	inner := t.Inner
 	if inner == nil {

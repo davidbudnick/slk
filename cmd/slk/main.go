@@ -681,7 +681,7 @@ func run() error {
 					return small
 				}
 				lazyAvatar(router.Active(), avatarCache, userID)
-				return ""
+				return avatarCache.GetSidebarDefault(badge.Color, badge.Hollow)
 			}
 		}
 		app.SetAvatarService(core.NewSidebarAvatarService(core.NewSixelAvatarService(func(userID string) string {
