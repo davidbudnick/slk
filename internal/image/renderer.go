@@ -92,7 +92,7 @@ func RenderImage(proto Protocol, img image.Image, target image.Point) Render {
 // Singleton renderers — concrete instances appear in kitty.go / sixel.go.
 // Until those exist, fall back to half-block so this file builds in isolation.
 var (
-	registry                       = NewRegistry()
+	registry                       = newSharedRegistry()
 	kittyRendererInstance          = NewKittyRenderer(registry)
 	kittyRenderer         Renderer = kittyRendererInstance
 	sixelRenderer         Renderer = NewSixelRenderer()
