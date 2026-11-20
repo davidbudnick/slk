@@ -120,6 +120,12 @@ type Channel struct {
 
 	Topic   TextBlock `json:"topic"`
 	Purpose TextBlock `json:"purpose"`
+
+	// Members is on group DM entries only: everyone in it, the user
+	// included. It is the one source of a group DM's size once the
+	// group has a custom name, which replaces the mpdm name the
+	// participants could otherwise be counted from.
+	Members []string `json:"members"`
 }
 
 // IM is one entry in userBoot's `ims` array.

@@ -234,7 +234,9 @@ type Sidebar struct {
 	PrivateGlyph string `toml:"private_glyph"`
 	// Avatars draws each DM's and app's avatar in place of its glyph,
 	// the peer's presence on its corner, as Slack does (kitty graphics
-	// only). Needs [appearance] show_avatars. Default off.
+	// only). A group DM gets the number of people in it on a square,
+	// and mention badges are drawn as pills. Needs [appearance]
+	// show_avatars. Default off.
 	Avatars bool `toml:"avatars"`
 	// ActiveOnly hides conversations with no activity in 30 days, in
 	// every section, like Slack's "Active only" filter. Default off.

@@ -106,8 +106,10 @@ private_glyph = "◆"         # glyph before private channels, e.g. a lock your 
                             # (sidebar only: the finder and pane header keep ◆)
 avatars = false             # true: each DM's and app's avatar in place of its glyph,
                             # presence on its corner (kitty graphics only; needs
-                            # [appearance] show_avatars). channel_indent = 2 puts the
-                            # rows under the header's name, as Slack does
+                            # [appearance] show_avatars). A group DM shows the number
+                            # of people in it on a square, and mention badges are
+                            # drawn as pills with a gap between rows. channel_indent
+                            # = 2 puts the rows under the header's name, as Slack does
 active_only = false         # true: hide conversations with no activity in 30 days, in
                             # every section (Slack's "Active only"; unread ones stay)
 mouse_resize = false        # true: drag the sidebar's right border to resize it

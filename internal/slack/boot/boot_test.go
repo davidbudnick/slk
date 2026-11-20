@@ -168,7 +168,8 @@ const fullBootBody = `{
       "topic": {"value": "", "creator": "", "last_set": 0},
       "purpose": {"value": "Group messaging", "creator": "U04T4THDD", "last_set": 1670000105},
       "properties": {},
-      "previous_names": []
+      "previous_names": [],
+      "members": ["U04T4THAA", "U04T4THBB", "U04T4THDD"]
     },
     {
       "id": "C55CONN33",
@@ -473,6 +474,7 @@ func TestUserBoot_DecodesChannels(t *testing.T) {
 			SharedTeamIDs: []string{"T04T4TH8W"},
 			Topic:         TextBlock{},
 			Purpose:       TextBlock{Value: "Group messaging", Creator: "U04T4THDD", LastSet: 1670000105},
+			Members:       []string{"U04T4THAA", "U04T4THBB", "U04T4THDD"},
 		},
 		{
 			ID: "C55CONN33", Name: "partner-sync", NameNormalized: "partner-sync-norm",

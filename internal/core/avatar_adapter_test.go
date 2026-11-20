@@ -32,6 +32,8 @@ func TestNewSidebarAvatarService(t *testing.T) {
 			return "away-" + userID
 		}
 		return "on-" + userID
+	}, func(c CountImage) string {
+		return "count-" + c.Label
 	})
 	sb, ok := s.(SidebarAvatarService)
 	if !ok {
@@ -40,10 +42,17 @@ func TestNewSidebarAvatarService(t *testing.T) {
 	if got := sb.SidebarAvatar("U1", AvatarBadge{Hollow: true}); got != "away-U1" {
 		t.Errorf("SidebarAvatar(U1) = %q, want the badged avatar", got)
 	}
+	if got := sb.SidebarCount(CountImage{Label: "3"}); got != "count-3" {
+		t.Errorf("SidebarCount(3) = %q, want the count's image", got)
+	}
 	if got := s.Avatar("U1"); got != "HB" {
 		t.Errorf("Avatar(U1) = %q, want the wrapped service's avatar", got)
 	}
-	if _, ok := NewSidebarAvatarService(plain, nil).(SidebarAvatarService); ok {
+	if _, ok := NewSidebarAvatarService(plain, nil, nil).(SidebarAvatarService); ok {
 		t.Error("service without a sidebar source claims to be a SidebarAvatarService")
+	}
+	noCount := NewSidebarAvatarService(plain, func(string, AvatarBadge) string { return "" }, nil).(SidebarAvatarService)
+	if got := noCount.SidebarCount(CountImage{Label: "3"}); got != "" {
+		t.Errorf("SidebarCount with no count source = %q, want empty", got)
 	}
 }

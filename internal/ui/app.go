@@ -443,13 +443,15 @@ type App struct {
 	replyAvatars  bool
 	// sidebarAvatarFn is nil unless the service draws sidebar avatars.
 	sidebarAvatarFn sidebar.AvatarFunc
-	sidebarAvatars  bool
-	imageCtx        imgrender.ImageContext
-	emojiCtx        messages.EmojiContext
-	emojiCustoms    map[string]string
-	channelNames    map[string]string // UI-owned mention names, independent of sidebar membership
-	userGroups      map[string]string
-	selfGroups      map[string]bool // usergroups the current user is in
+	// sidebarCountFn draws the sidebar's counts as images, with it.
+	sidebarCountFn sidebar.CountFunc
+	sidebarAvatars bool
+	imageCtx       imgrender.ImageContext
+	emojiCtx       messages.EmojiContext
+	emojiCustoms   map[string]string
+	channelNames   map[string]string // UI-owned mention names, independent of sidebar membership
+	userGroups     map[string]string
+	selfGroups     map[string]bool // usergroups the current user is in
 
 	// buildInfo is the build identity :version shows: version and short
 	// commit (version.Short). Set once at startup by main.
@@ -3242,9 +3244,9 @@ func (a *App) SetAvatarService(s core.AvatarService) {
 		}
 	}
 	a.avatarFn, a.replyAvatarFn, a.sixelAvatarFn = fn, replyFn, sixelFn
-	a.sidebarAvatarFn = nil
+	a.sidebarAvatarFn, a.sidebarCountFn = nil, nil
 	if sb, ok := s.(core.SidebarAvatarService); ok {
-		a.sidebarAvatarFn = sb.SidebarAvatar
+		a.sidebarAvatarFn, a.sidebarCountFn = sb.SidebarAvatar, sb.SidebarCount
 	}
 	for _, m := range a.allWinModels() {
 		m.SetAvatarFunc(fn)
@@ -3255,24 +3257,28 @@ func (a *App) SetAvatarService(s core.AvatarService) {
 	a.threadPanel.SetSixelAvatarFunc(sixelFn)
 	a.threadsView.SetAvatarFunc(fn)
 	a.activityView.SetAvatarFunc(fn)
-	a.sidebar.SetAvatarFunc(a.sidebarAvatarFunc())
+	a.applySidebarAvatars()
 }
 
 // SetSidebarAvatars draws DM and app avatars in the sidebar in place of
-// their glyphs ([sidebar] avatars). Needs an avatar service that draws
-// them.
+// their glyphs, and its counts as images: mention badges as pills, a
+// group DM's icon as its size ([sidebar] avatars). Needs an avatar
+// service that draws them.
 func (a *App) SetSidebarAvatars(enabled bool) {
 	a.sidebarAvatars = enabled
-	a.sidebar.SetAvatarFunc(a.sidebarAvatarFunc())
+	a.applySidebarAvatars()
 }
 
-// sidebarAvatarFunc is the sidebar's avatar source, nil when avatars
-// are off there or the service can't draw them.
-func (a *App) sidebarAvatarFunc() sidebar.AvatarFunc {
+// applySidebarAvatars hands the sidebar its image sources, nil when
+// avatars are off there or the service can't draw them.
+func (a *App) applySidebarAvatars() {
 	if !a.sidebarAvatars {
-		return nil
+		a.sidebar.SetAvatarFunc(nil)
+		a.sidebar.SetCountFunc(nil)
+		return
 	}
-	return a.sidebarAvatarFn
+	a.sidebar.SetAvatarFunc(a.sidebarAvatarFn)
+	a.sidebar.SetCountFunc(a.sidebarCountFn)
 }
 
 // SetReplyAvatars switches the reply row under thread parents to Slack's
