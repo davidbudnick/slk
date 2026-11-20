@@ -161,14 +161,17 @@ func (a *App) renderThreadsViewPanel(msgWidth, msgBorder, contentHeight int, msg
 // panelCache slot (renderCache.activityPanel) keyed on
 // activityView.Version.
 //
-// SetUserNames and SetSelfUserID MUST run BEFORE snapshotting
-// activityView.Version (both are equality-checked no-ops in the model,
-// so identical input is free, but reading Version() first would key the
-// cache on a pre-update version). Channel names are fanned out from
-// SetChannels (rare) and not pushed on this hot path.
+// SetUserNames, SetSelfUserID and SetFocused MUST run BEFORE snapshotting
+// activityView.Version (all three are equality-checked no-ops in the
+// model, so identical input is free, but reading Version() first would
+// key the cache on a pre-update version). Channel names are fanned out
+// from SetChannels (rare) and not pushed on this hot path. The selected
+// card draws focused only while the list has the keyboard, as in the
+// Threads view.
 func (a *App) renderActivityViewPanel(msgWidth, msgBorder, contentHeight int, msgFocused bool, msgLayoutKey int64) string {
 	a.activityView.SetUserNames(a.userNames)
 	a.activityView.SetSelfUserID(a.currentUserID)
+	a.activityView.SetFocused(msgFocused)
 	avVersion := a.activityView.Version()
 	c := &a.renderCache.activityPanel
 	if c.hit(avVersion, msgWidth, contentHeight, msgLayoutKey) {

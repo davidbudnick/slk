@@ -9,7 +9,7 @@ import (
 
 // manyItems returns n distinct activity items (cycling through the
 // mention / thread / reaction / DM card shapes) and their hydrated
-// bodies. Timestamps are far in the past so formatRelTime ("Nd ago") is
+// bodies. Timestamps are far in the past so formatRelTime ("N days") is
 // stable across the renders a test compares.
 func manyItems(n int) ([]core.ActivityItem, map[string]core.ActivityMessage) {
 	types := []string{"at_user", "thread_v2", "message_reaction", "dm"}

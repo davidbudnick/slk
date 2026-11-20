@@ -48,7 +48,7 @@ func TestActivityRefs_Empty(t *testing.T) {
 }
 
 // App.SetChannels hands the Activity view each conversation's type, so a
-// reaction in a 1:1 DM reads "Reacted in DM" rather than "#<person>".
+// reaction in a 1:1 DM reads "Direct message" rather than "#<person>".
 func TestActivityView_ChannelTypesComeFromSetChannels(t *testing.T) {
 	a := newTestApp(t, withSize(120, 30), withActiveTeam("T1"), withView(ViewActivity),
 		withChannels(sidebar.ChannelItem{ID: "D1", Name: "Drew Gilliam", Type: "dm"}))
@@ -57,7 +57,7 @@ func TestActivityView_ChannelTypesComeFromSetChannels(t *testing.T) {
 	}})
 
 	out := ansi.Strip(a.View().Content)
-	if !strings.Contains(out, "Reacted in DM") || strings.Contains(out, "#Drew Gilliam") {
+	if !strings.Contains(out, "Direct message") || strings.Contains(out, "#Drew Gilliam") {
 		t.Errorf("activity view does not name the DM as a DM:\n%s", out)
 	}
 }
