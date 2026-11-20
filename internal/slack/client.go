@@ -1230,6 +1230,7 @@ type UnreadInfo struct {
 	MentionCount int
 	HasUnread    bool
 	LastRead     string // Slack message timestamp
+	Latest       string // the conversation's newest message, a Slack timestamp
 }
 
 // ThreadsAggregate captures Slack's server-side notion of whether the
@@ -1281,18 +1282,21 @@ func (c *Client) GetUnreadCounts() ([]UnreadInfo, ThreadsAggregate, int, error) 
 			MentionCount       int    `json:"mention_count"`
 			UnreadCountDisplay int    `json:"unread_count_display,omitempty"`
 			LastRead           string `json:"last_read"`
+			Latest             string `json:"latest"`
 		} `json:"channels"`
 		Mpims []struct {
 			ID           string `json:"id"`
 			HasUnreads   bool   `json:"has_unreads"`
 			MentionCount int    `json:"mention_count"`
 			LastRead     string `json:"last_read"`
+			Latest       string `json:"latest"`
 		} `json:"mpims"`
 		Ims []struct {
 			ID           string `json:"id"`
 			HasUnreads   bool   `json:"has_unreads"`
 			MentionCount int    `json:"mention_count"`
 			LastRead     string `json:"last_read"`
+			Latest       string `json:"latest"`
 		} `json:"ims"`
 		// Threads is the workspace-wide thread-subscription rollup.
 		// Slack returns this top-level when the user has subscribed
@@ -1331,6 +1335,7 @@ func (c *Client) GetUnreadCounts() ([]UnreadInfo, ThreadsAggregate, int, error) 
 			MentionCount: ch.MentionCount,
 			HasUnread:    ch.HasUnreads,
 			LastRead:     ch.LastRead,
+			Latest:       ch.Latest,
 		})
 	}
 	for _, ch := range result.Mpims {
@@ -1339,6 +1344,7 @@ func (c *Client) GetUnreadCounts() ([]UnreadInfo, ThreadsAggregate, int, error) 
 			MentionCount: ch.MentionCount,
 			HasUnread:    ch.HasUnreads,
 			LastRead:     ch.LastRead,
+			Latest:       ch.Latest,
 		})
 	}
 	for _, ch := range result.Ims {
@@ -1347,6 +1353,7 @@ func (c *Client) GetUnreadCounts() ([]UnreadInfo, ThreadsAggregate, int, error) 
 			MentionCount: ch.MentionCount,
 			HasUnread:    ch.HasUnreads,
 			LastRead:     ch.LastRead,
+			Latest:       ch.Latest,
 		})
 	}
 
