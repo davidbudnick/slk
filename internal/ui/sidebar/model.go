@@ -926,12 +926,28 @@ func (m *Model) HandleAvatarReady(userID string) {
 // iconCells is the width of a row's icon when avatars are drawn.
 const iconCells = 2
 
+// selfDMMark follows your own name on your DM with yourself, faint, as
+// Slack's "you" is.
+const selfDMMark = "  \x1b[2myou\x1b[22m"
+
 // rowIcon is what precedes item's name, with its trailing space: glyph,
-// or the peer's avatar when one can be drawn. With avatars on, a glyph
-// is padded to the avatar's width.
-func (m *Model) rowIcon(item ChannelItem, glyph string, now time.Time) string {
+// or, with avatars on, an image in the avatar's cells: the peer's
+// avatar, a group DM's size, or Slack's hash or padlock for a channel,
+// brighter when unread. Every image is centred in those cells, so the
+// column lines up whatever the rows are. A glyph that has no image is
+// padded to the same width.
+func (m *Model) rowIcon(item ChannelItem, glyph string, unread bool, now time.Time) string {
 	if m.avatarFn == nil {
 		return glyph
+	}
+	if kind := channelIconKind(item.Type); kind != "" {
+		col := styles.SidebarTextMuted
+		if unread {
+			col = styles.SidebarText
+		}
+		if img := m.countImage(core.CountImage{Icon: kind, Text: col}); img != "" {
+			return img + " "
+		}
 	}
 	if item.DMUserID != "" && (item.Type == "dm" || item.Type == "app") {
 		// The reset lets each row variant re-apply its own colours after the image.
@@ -946,6 +962,32 @@ func (m *Model) rowIcon(item ChannelItem, glyph string, now time.Time) string {
 		}
 	}
 	return glyph + strings.Repeat(" ", max(iconCells+1-lipgloss.Width(glyph), 0))
+}
+
+// channelIconKind is the line icon for a channel row of typ, "" for a
+// row that has an avatar or a glyph instead.
+func channelIconKind(typ string) string {
+	switch typ {
+	case "channel":
+		return core.IconHash
+	case "private":
+		return core.IconLock
+	}
+	return ""
+}
+
+// sectionIconKind is the line icon Slack draws before a built-in
+// section of typ, "" for a section that has none.
+func sectionIconKind(typ string) string {
+	switch typ {
+	case "channels":
+		return core.IconChannels
+	case "direct_messages":
+		return core.IconDirectMessages
+	case "recent_apps":
+		return core.IconApps
+	}
+	return ""
 }
 
 // countImage is c drawn as an image and closed with a reset, so the row
@@ -2479,7 +2521,7 @@ func (m *Model) buildCache(width int) {
 		default:
 			prefix = "# "
 		}
-		prefix = m.rowIcon(item, prefix, statusNow)
+		prefix = m.rowIcon(item, prefix, hasUnread, statusNow)
 
 		// Truncate name to fit sidebar width.
 		// Unicode chars like ● (U+25CF), ○, ◆, ▌ have East Asian Width
@@ -2525,13 +2567,19 @@ func (m *Model) buildCache(width int) {
 		if m.avatarFn != nil {
 			charged = iconCells + 1
 		}
-		budget := (width - 2) - rowChromeExcludingTrailer - trailerCells - statusCells - max(lipgloss.Width(prefix)-charged, 0)
+		// Slack marks your DM with yourself "you", dimmer than the name.
+		selfMark := ""
+		if m.slackStyle && m.isSelfDM(item) {
+			selfMark = selfDMMark
+		}
+		budget := (width - 2) - rowChromeExcludingTrailer - trailerCells - statusCells - lipgloss.Width(selfMark) - max(lipgloss.Width(prefix)-charged, 0)
 		indent := min(m.channelIndent, max(budget-5, 0))
 		prefix = strings.Repeat(" ", indent) + prefix
 		maxNameLen := max(budget-indent, 5)
 		if lipgloss.Width(name) > maxNameLen {
 			name = truncate.StringWithTail(name, uint(maxNameLen), "…")
 		}
+		name += selfMark
 		if statusGlyph != "" {
 			name += " " + statusGlyph
 		}
@@ -2701,12 +2749,15 @@ func (m *Model) sectionDisplayMeta(sectionKey string) (name, emoji string) {
 }
 
 // headerEmojiColumn is the width of the column Slack-style headers
-// keep for an emoji and the space after it: 0 unless some section has
-// one. A header without an emoji leaves it blank, so every section's
-// name starts in one column.
+// keep for an emoji or icon and the space after it: 0 unless some
+// section has one. A header with neither leaves it blank, so every
+// section's name starts in one column.
 func (m *Model) headerEmojiColumn() int {
 	if !m.slackStyle || !m.useSlackSections() {
 		return 0
+	}
+	if m.drawsSectionIcons() {
+		return iconCells + 1
 	}
 	for _, meta := range m.sectionsProvider.OrderedSlackSections() {
 		if meta.Emoji != "" {
@@ -2714,6 +2765,35 @@ func (m *Model) headerEmojiColumn() int {
 		}
 	}
 	return 0
+}
+
+// drawsSectionIcons reports whether the built-in sections' icons can
+// be drawn in the emoji column: as images, the width an emoji has.
+func (m *Model) drawsSectionIcons() bool {
+	return m.countFn != nil && m.emojiCells() == iconCells
+}
+
+// sectionIcon is the image of the line icon Slack draws before the
+// built-in section keyed sectionKey: Channels, Direct messages or
+// Apps. "" for any other section, or when it cannot be drawn.
+func (m *Model) sectionIcon(sectionKey string) string {
+	if !m.drawsSectionIcons() {
+		return ""
+	}
+	kind := ""
+	for _, meta := range m.sectionsProvider.OrderedSlackSections() {
+		if meta.ID == sectionKey {
+			kind = sectionIconKind(meta.Type)
+		}
+	}
+	if kind == "" {
+		return ""
+	}
+	img := m.countFn(core.CountImage{Icon: kind, Text: styles.SectionHeader.GetForeground()})
+	if strings.Contains(img, "\n") {
+		return ""
+	}
+	return img
 }
 
 // renderSectionHeaderLabel returns the (normal, selected) label
@@ -2767,11 +2847,15 @@ func (m *Model) renderSectionHeaderLabel(name string, width int, cursor string, 
 		emojiCells = headerCells(emojiPrefix)
 	} else if pad := m.headerEmojiColumn(); pad > 0 {
 		// Slack fills this column with an icon on its built-in
-		// sections; left blank, their names still start where every
-		// other section's does.
+		// sections. Drawn or left blank, their names start where
+		// every other section's does.
 		emojiPrefix = strings.Repeat(" ", pad)
 		emojiPrefixSelected = emojiPrefix
 		emojiCells = pad
+		if icon := m.sectionIcon(name); icon != "" {
+			emojiPrefix = icon + bubblesansi.ForegroundSGR(styles.SectionHeader.GetForeground()) + " "
+			emojiPrefixSelected = icon + bgAnsi + " "
+		}
 	}
 
 	// Slack style starts the header at its emoji, as Slack does, and

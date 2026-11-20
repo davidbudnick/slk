@@ -107,8 +107,10 @@ private_glyph = "◆"         # glyph before private channels, e.g. a lock your 
 avatars = false             # true: each DM's and app's avatar in place of its glyph,
                             # presence on its corner (kitty graphics only; needs
                             # [appearance] show_avatars). A group DM shows the number
-                            # of people in it on a square, and mention badges are
-                            # drawn as pills with a gap between rows. channel_indent
+                            # of people in it on a square, a channel's # and lock
+                            # and the built-in sections' icons are drawn as images in
+                            # the same cells, and mention badges are drawn as pills
+                            # with a gap between rows. channel_indent
                             # = 2 is the nearest to how far Slack indents a row
                             # under its header
 active_only = false         # true: hide conversations with no activity in 30 days, in

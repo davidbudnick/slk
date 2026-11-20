@@ -264,8 +264,12 @@ func (k *KittyRenderer) RenderKey(key string, target image.Point) Render {
 			cw, ch := measuredCellPixels()
 			pxW := target.X * cw
 			pxH := target.Y * ch
+			// Kept in proportion, not stretched over the cells: a cell
+			// is rarely exactly twice as tall as wide (17x37 px drew
+			// every emoji and avatar 9% too tall), and what the image
+			// leaves uncovered stays transparent.
 			resized := image.NewRGBA(image.Rect(0, 0, pxW, pxH))
-			draw.BiLinear.Scale(resized, resized.Bounds(), src, src.Bounds(), draw.Over, nil)
+			draw.BiLinear.Scale(resized, containRect(src.Bounds().Size(), pxW, pxH), src, src.Bounds(), draw.Over, nil)
 			var pngBuf bytes.Buffer
 			if err := imgpng.Encode(&pngBuf, resized); err == nil {
 				payload = base64.StdEncoding.EncodeToString(pngBuf.Bytes())
@@ -308,6 +312,21 @@ func (k *KittyRenderer) RenderKey(key string, target image.Point) Render {
 		}
 	}
 	return r
+}
+
+// containRect is the largest rectangle with src's proportions that fits
+// in w×h, centred in it.
+func containRect(src image.Point, w, h int) image.Rectangle {
+	if src.X <= 0 || src.Y <= 0 {
+		return image.Rect(0, 0, w, h)
+	}
+	fitW, fitH := w, src.Y*w/src.X
+	if fitH > h {
+		fitW, fitH = src.X*h/src.Y, h
+	}
+	fitW, fitH = max(fitW, 1), max(fitH, 1)
+	x0, y0 := (w-fitW)/2, (h-fitH)/2
+	return image.Rect(x0, y0, x0+fitW, y0+fitH)
 }
 
 // emitKittyUpload writes the kitty graphics protocol APC sequence to
