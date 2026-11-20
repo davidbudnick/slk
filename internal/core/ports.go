@@ -361,6 +361,12 @@ type DesktopService interface {
 	// Stat describes the file at path.
 	Stat(path string) (fs.FileInfo, error)
 
+	// ChooseFiles opens the system's file chooser and blocks until the
+	// user picks or cancels (callers run it from a Cmd). It returns the
+	// picked paths, none when the user cancelled, and
+	// errors.ErrUnsupported where there is no chooser to open.
+	ChooseFiles() ([]string, error)
+
 	// SaveThread writes the thread as Markdown to the export directory
 	// and returns the file's path.
 	SaveThread(parent MessageItem, replies []MessageItem, userNames, channelNames map[string]string, channelName string) (string, error)
