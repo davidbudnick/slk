@@ -363,6 +363,22 @@ func (db *DB) migrate() error {
 		"ALTER TABLE users ADD COLUMN huddle_expiration INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	// The full name, shown in place of the display name when
+	// [appearance] full_names is on. The same one-time version reset,
+	// keyed on its own column.
+	hadRealName, err := db.hasColumn("users", "real_name")
+	if err != nil {
+		return err
+	}
+	if !hadRealName {
+		if _, err := db.conn.Exec(`UPDATE users SET version = 0`); err != nil {
+			return fmt.Errorf("resetting user versions for real-name backfill: %w", err)
+		}
+	}
+	if err := db.addColumnIfMissing("users", "real_name",
+		"ALTER TABLE users ADD COLUMN real_name TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 
 	// Full-text search index. FTS5 may be unavailable in unusual
 	// driver builds; search degrades to LIKE rather than failing

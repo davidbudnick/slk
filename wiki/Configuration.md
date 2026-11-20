@@ -45,6 +45,8 @@ kitty_placement = "auto"  # auto | native | emulated: who places kitty images.
 max_image_rows = 20       # cap inline image height in terminal rows
 reply_avatars = false     # true: Slack-style reply row, repliers' avatars + "N replies"
                           # (avatars need show_avatars and kitty graphics)
+full_names = false        # true: show people by full name ("Ann Lee"), as Slack does
+                          # by default, not by display name ("ann")
 colored_usernames = false # color each user's name by ID hash (Slack-style)
 click_opens_thread = true # false: clicking a message only selects it (Enter
                           # still opens the thread)

@@ -25,11 +25,7 @@ func lookupUserCached(userID string, userNames *userNameStore, db *cache.DB) (st
 	}
 	if db != nil {
 		if u, err := db.GetUser(userID); err == nil {
-			name := u.DisplayName
-			if name == "" {
-				name = u.Name
-			}
-			if name != "" {
+			if name := cachedUserName(u); name != "" {
 				return name, true
 			}
 		}
@@ -81,7 +77,8 @@ func resolveUser(client *slackclient.Client, userID string, userNames *userNameS
 					WorkspaceID: client.TeamID(),
 					HomeTeamID:  u.TeamID,
 					Name:        u.Name,
-					DisplayName: name,
+					DisplayName: profileDisplayName(u),
+					RealName:    u.RealName,
 					AvatarURL:   u.Profile.Image32,
 					Presence:    "away",
 					IsBot:       isBot,
@@ -107,7 +104,8 @@ func resolveUser(client *slackclient.Client, userID string, userNames *userNameS
 		}
 		isBot := u.IsBot || u.IsAppUser
 		isExternal := u.TeamID != "" && u.TeamID != client.TeamID()
-		userNames.Set(userID, name)
+		shown := shownName(u.RealName, name)
+		userNames.Set(userID, shown)
 		avatarCache.Preload(userID, u.Profile.Image32)
 		wasDeleted := knownDeleted(db, userID)
 		db.UpsertUser(cache.User{
@@ -116,6 +114,7 @@ func resolveUser(client *slackclient.Client, userID string, userNames *userNameS
 			HomeTeamID:  u.TeamID,
 			Name:        u.Name,
 			DisplayName: name,
+			RealName:    u.RealName,
 			AvatarURL:   u.Profile.Image32,
 			Presence:    "away",
 			IsBot:       isBot,
@@ -128,11 +127,11 @@ func resolveUser(client *slackclient.Client, userID string, userNames *userNameS
 			send(ui.UserResolvedMsg{
 				TeamID:      client.TeamID(),
 				UserID:      userID,
-				DisplayName: name,
+				DisplayName: shown,
 				IsBot:       isBot,
 			})
 		}
-		return name, isBot
+		return shown, isBot
 	}
 	return userID, false
 }
@@ -177,7 +176,7 @@ func resolveDMNames(wctx *WorkspaceContext, db *cache.DB, avatarCache *avatar.Ca
 				if send != nil {
 					send(ui.DMNameResolvedMsg{
 						ChannelID:   dm.ChannelID,
-						DisplayName: name,
+						DisplayName: shownName(u.Profile.RealName, name),
 						IsBot:       u.IsBot,
 					})
 				}

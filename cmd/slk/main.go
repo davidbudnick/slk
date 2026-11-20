@@ -623,6 +623,7 @@ func run() error {
 		railTeamIDs = append(railTeamIDs, it.ID)
 	}
 	applyUISettings(app, uiSettingsFromConfig(cfg))
+	fullNames.Store(cfg.Appearance.FullNames)
 	app.SetEditorService(core.NewEditorService(editor.WriteDraft, editor.Edit, editor.TakeDraft))
 	if editor, ok := ui.ResolveEditor(cfg.Compose.Editor); ok {
 		app.SetComposeEditor(editor)

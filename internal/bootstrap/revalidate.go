@@ -356,6 +356,7 @@ func revalidateUsers(ctx context.Context, deps Deps, out *Result, logf func(stri
 			HomeTeamID:  u.TeamID,
 			Name:        u.Name,
 			DisplayName: userDisplayName(u),
+			RealName:    u.Profile.RealName,
 			// ImageOriginal is present on 255 of 291 observed
 			// results; the 36 without it are users with no custom
 			// image, and UpdateUserFromEdge reads an empty value as

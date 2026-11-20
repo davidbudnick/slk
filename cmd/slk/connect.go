@@ -93,10 +93,7 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
 	// into "app" vs "dm" without waiting for the network fetch.
 	cachedUsers, _ := db.ListUsers(client.TeamID())
 	for _, u := range cachedUsers {
-		name := u.DisplayName
-		if name == "" {
-			name = u.Name
-		}
+		name := cachedUserName(u)
 		wctx.UserNames.Set(u.ID, name)
 		if u.Name != "" {
 			wctx.UserNamesByHandle[u.Name] = name
@@ -231,6 +228,7 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
 	// the synchronized bot classification, which buildChannelItem reads to bucket app DMs,
 	// and hydrateFirstSight writes the cache rows the sidebar's
 	// channel list is later reconciled against.
+	reseedPeerNames(wctx, db, res.IMs)
 	applyBootUsers(wctx, res)
 	// conversations.view returns the custom emoji THAT CONVERSATION
 	// USES next to the history it was asked for — not the workspace's
@@ -387,6 +385,7 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
 		log.Printf("workspace %s: no conversations from either users.conversations or client.userBoot; the sidebar will be empty", token.TeamName)
 	}
 
+	resolveGroupMembers(wctx, db, channels)
 	for _, ch := range channels {
 		item, finderItem := buildChannelItem(ch, wctx, cfg, client.TeamID())
 		upsertChannelInDB(db, ch, item.Type, client.TeamID())

@@ -4,7 +4,6 @@ import (
 	"github.com/gammons/slk/internal/cache"
 	"github.com/gammons/slk/internal/config"
 	"github.com/gammons/slk/internal/core"
-	"github.com/gammons/slk/internal/slackfmt"
 	"github.com/gammons/slk/internal/ui/sidebar"
 	"github.com/slack-go/slack"
 )
@@ -70,9 +69,7 @@ func buildChannelItem(ch slack.Channel, wctx *WorkspaceContext, cfg config.Confi
 			displayName = ch.User
 		}
 	} else if ch.IsMpIM {
-		displayName = slackfmt.FormatMPDMName(ch.Name, wctx.UserHandle, func(h string) string {
-			return wctx.UserNamesByHandle[h]
-		})
+		displayName = groupName(ch, wctx)
 	}
 
 	section := ""
