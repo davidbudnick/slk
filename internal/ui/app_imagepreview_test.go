@@ -257,3 +257,45 @@ func TestMouseClick_OnThreadImageDispatchesOpenPreview(t *testing.T) {
 		t.Errorf("OpenImagePreviewMsg = %+v, want {Channel:%q TS:%q AttIdx:0}", op, channelID, reply.TS)
 	}
 }
+
+// Space on a message opens its image, as it does in Slack and in Quick
+// Look, and a second Space closes the preview. On the sidebar Space
+// still belongs to the section headers.
+func TestSpace_OpensTheSelectedMessagesImageAndClosesThePreview(t *testing.T) {
+	channelID, ts, _, msg := imageBearingMessage(t)
+	space := tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
+
+	app := NewApp()
+	app.activeChannelID = channelID
+	app.focusedPanel = PanelMessages
+	app.messagepane.SetMessages([]messages.MessageItem{msg})
+	cmd := app.handleNormalMode(space)
+	if cmd == nil {
+		t.Fatal("Space on a message with an image did nothing")
+	}
+	op, ok := cmd().(messages.OpenImagePreviewMsg)
+	if !ok || op.Channel != channelID || op.TS != ts || op.AttIdx != 0 {
+		t.Fatalf("Space produced %#v, want the message's first image opened", cmd())
+	}
+
+	app.focusedPanel = PanelSidebar
+	if cmd := app.handleNormalMode(space); cmd != nil {
+		t.Errorf("Space on the sidebar produced %T, want it left to the sidebar", cmd())
+	}
+
+	app.messagepane.SetMessages([]messages.MessageItem{{TS: "1.0", UserName: "alice", Text: "no images here"}})
+	app.focusedPanel = PanelMessages
+	if cmd := app.handleNormalMode(space); cmd != nil {
+		t.Errorf("Space on a message with no image produced %T, want nothing", cmd())
+	}
+
+	overlay := imgpkg.NewPreview(imgpkg.PreviewInput{Name: "screenshot.png"})
+	app.preview.Open(&overlay, channelID, ts, 0)
+	if !app.preview.Active() {
+		t.Fatal("preview did not open")
+	}
+	app.Update(space)
+	if app.preview.Active() {
+		t.Error("Space did not close the open preview")
+	}
+}
