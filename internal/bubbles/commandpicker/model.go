@@ -175,8 +175,8 @@ func kindRank(kind string) int {
 }
 
 // filter keeps the commands whose name starts with the query, then
-// those that only contain it, as Slack's menu does ("/ha" finds
-// /hangout, then /soc-handover).
+// those in which a later word does, as Slack's menu does ("/ha" finds
+// /hangout, then /soc-handover, and not /challenge).
 func (m *Model) filter() {
 	q := text.Fold(strings.TrimPrefix(m.query, "/"))
 	if q == "" {
@@ -189,7 +189,7 @@ func (m *Model) filter() {
 		switch {
 		case strings.HasPrefix(name, q):
 			prefix = append(prefix, c)
-		case strings.Contains(name, q):
+		case text.HasWordPrefix(name, q):
 			inside = append(inside, c)
 		}
 	}

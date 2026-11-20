@@ -141,13 +141,15 @@ func (m *Model) SetFrecency(f emoji.Frecency) {
 	}
 }
 
-// filter keeps the first MaxVisible entries whose name starts with the
-// query, the user's frecent ones first (see emoji.Match). Callers must
-// pass alphabetically-sorted entries (emoji.BuildEntries already does);
-// the rest keep that order.
+// filter keeps the first MaxVisible entries matching the query in
+// emoji.Match's order, which is Slack's: the emoji the user uses first,
+// those whose name starts with the query before those with a later
+// word that does (":ez" offers a much-used pepe_ez second), then the
+// rest in entries' order. Callers must pass alphabetically-sorted
+// entries (emoji.BuildEntries already does).
 func (m *Model) filter() {
 	m.filtered = emoji.Match(m.entries, func(e emoji.EmojiEntry) string { return e.Name }, m.query,
-		emoji.MatchOptions{Limit: MaxVisible, Frecency: m.frecency, Customs: m.emojiCtx.Customs})
+		emoji.MatchOptions{Words: true, Limit: MaxVisible, Frecency: m.frecency, Customs: m.emojiCtx.Customs})
 	if m.selected >= len(m.filtered) {
 		m.selected = 0
 		if len(m.filtered) > 0 {

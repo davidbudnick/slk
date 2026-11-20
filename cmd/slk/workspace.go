@@ -140,6 +140,9 @@ type WorkspaceContext struct {
 	// composer's "/" menu: a whole slice swapped in, never changed.
 	// Access it via AppCommands/SetAppCommands.
 	appCommands atomic.Pointer[[]core.SlashCommand]
+	// emojiUse holds what Slack keeps of the user's emoji use, which
+	// the emoji pickers rank by. Access it via EmojiUse/SetEmojiUse.
+	emojiUse atomic.Pointer[emojiUse]
 	// customEmojiFreshFor is how long emoji.list can wait after connect,
 	// from bootCustomEmoji. Read once, on the goroutine that called
 	// connectWorkspace.
@@ -324,6 +327,25 @@ func (w *WorkspaceContext) AppCommands() []core.SlashCommand {
 // must not change the slice afterwards.
 func (w *WorkspaceContext) SetAppCommands(list []core.SlashCommand) {
 	w.appCommands.Store(&list)
+}
+
+// EmojiUse returns what Slack keeps of the user's emoji use, the zero
+// value before it has been read. Safe from any goroutine; its maps
+// must be treated as read-only.
+func (w *WorkspaceContext) EmojiUse() emojiUse {
+	if w == nil {
+		return emojiUse{}
+	}
+	if use := w.emojiUse.Load(); use != nil {
+		return *use
+	}
+	return emojiUse{}
+}
+
+// SetEmojiUse publishes Slack's record of the user's emoji use. The
+// caller must not change its maps afterwards.
+func (w *WorkspaceContext) SetEmojiUse(use emojiUse) {
+	w.emojiUse.Store(&use)
 }
 
 // workspaceRouter is the program-wide registry of connected

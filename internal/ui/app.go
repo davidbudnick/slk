@@ -3724,6 +3724,9 @@ func (a *App) SetCustomEmoji(customs map[string]string) {
 	// emojipicker.Model.SetEmojiCustoms for context.
 	a.compose.SetEmojiCustoms(customs)
 	a.threadCompose.SetEmojiCustoms(customs)
+	// The ranking is the active workspace's too: Slack's use counts are
+	// its user's, and this runs whenever the workspace changes.
+	a.refreshEmojiFrecency()
 }
 
 // SetInitialChannel sets the active channel and its messages before the TUI starts.

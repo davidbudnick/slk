@@ -104,6 +104,7 @@ See [[Terminal Compatibility|Terminal-Compatibility]] for which protocol your te
 ![Teammates' reactions arriving live, then adding one with the reaction picker](https://github.com/gammons/slk/raw/main/docs/assets/demo/reactions.gif)
 
 - Search-first picker overlay (`r`) with frecent emoji
+- The picker and the composer's `:` autocomplete list emoji in Slack's order: the ones Slack counts as your frequently used first, most used first, with the emoji named exactly what you typed among them; then the rest of what you have used; then everything else by name. Names that start with what you typed come before names with a later word that does (`:ez` finds `ez`, then `pepe_ez`). The counts are Slack's own, read from your account when slk connects, plus the uses made from slk; until they arrive, and if Slack refuses them, slk ranks by its own history
 - Quick-toggle nav across existing pills (`R`, then `h/l/Enter`)
 - Pill-style display (green = yours, gray = others)
 - Optimistic UI, deduped against the WebSocket echo

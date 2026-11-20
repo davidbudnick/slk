@@ -152,10 +152,14 @@ func (m *Model) IsVisible() bool {
 // matches for one; only their names are read.
 func (m *Model) SetFrecentEmoji(entries []core.EmojiEntry) {
 	names := make([]string, len(entries))
+	var frequent []string
 	for i, e := range entries {
 		names[i] = e.Name
+		if e.Frequent {
+			frequent = append(frequent, e.Name)
+		}
 	}
-	m.frecency = slkemoji.NewFrecency(names)
+	m.frecency = slkemoji.NewFrecency(names).WithFrequent(frequent)
 	if m.visible {
 		m.filter()
 	}

@@ -217,6 +217,12 @@ var reduceWorkspace reducerFunc = func(a *App, msg tea.Msg) (tea.Cmd, bool) {
 		}
 		return nil, true
 
+	case EmojiUseLoadedMsg:
+		if m.TeamID == a.activeTeamID {
+			a.refreshEmojiFrecency()
+		}
+		return nil, true
+
 	case UserGroupsLoadedMsg:
 		if m.TeamID == a.activeTeamID {
 			a.SetUserGroups(m.UserGroups)
