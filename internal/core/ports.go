@@ -401,6 +401,10 @@ type SettingsService interface {
 	// changes before the UI shows a switch. ThemeScopeGlobal ignores it.
 	SaveTheme(teamID, name string, scope ThemeScope)
 	SaveSidebarWidth(width int)
+	// SaveCollapsedSections persists the header names of teamID's
+	// collapsed sidebar sections; like SaveTheme, teamID is the
+	// workspace the UI showed. An empty names is still saved.
+	SaveCollapsedSections(teamID string, names []string)
 }
 
 // SuppressionService holds the rules that hide authors' messages

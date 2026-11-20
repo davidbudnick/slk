@@ -126,6 +126,7 @@ type wiring struct {
 	desktop          core.DesktopServiceFuncs
 	saveTheme        func(teamID, name string, scope core.ThemeScope)
 	saveSidebarWidth func(width int)
+	saveCollapsed    func(teamID string, names []string)
 	readStates       func() map[string]core.ReadState
 	unreadWorkspaces func() []string
 }
@@ -203,12 +204,17 @@ func (a *App) setStatusSetterForTest(fn func(action core.PresenceAction, snoozeM
 
 func (a *App) setThemeSaverForTest(fn func(teamID, name string, scope core.ThemeScope)) {
 	w := rewire(a, func(w *wiring) { w.saveTheme = fn })
-	a.SetSettingsService(core.NewSettingsService(w.saveTheme, w.saveSidebarWidth))
+	a.SetSettingsService(core.NewSettingsService(w.saveTheme, w.saveSidebarWidth, w.saveCollapsed))
 }
 
 func (a *App) setWidthSaverForTest(fn func(width int)) {
 	w := rewire(a, func(w *wiring) { w.saveSidebarWidth = fn })
-	a.SetSettingsService(core.NewSettingsService(w.saveTheme, w.saveSidebarWidth))
+	a.SetSettingsService(core.NewSettingsService(w.saveTheme, w.saveSidebarWidth, w.saveCollapsed))
+}
+
+func (a *App) setCollapsedSectionsSaverForTest(fn func(teamID string, names []string)) {
+	w := rewire(a, func(w *wiring) { w.saveCollapsed = fn })
+	a.SetSettingsService(core.NewSettingsService(w.saveTheme, w.saveSidebarWidth, w.saveCollapsed))
 }
 
 func (a *App) setReadStateReaderForTest(fn func() map[string]core.ReadState) {

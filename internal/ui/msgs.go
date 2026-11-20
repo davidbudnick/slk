@@ -374,7 +374,10 @@ type (
 		PermalinkDomains []string // configured aliases for archive permalink routing
 		Theme            string   // resolved theme name (per-workspace or global default)
 		SidebarWidth     int      // resolved sidebar width (per-workspace or global default)
-		Channels         []sidebar.ChannelItem
+		// CollapsedSections is the workspace's saved collapsed sidebar
+		// sections, by header name; nil when it has none saved.
+		CollapsedSections []string
+		Channels          []sidebar.ChannelItem
 		// ChannelNames includes known non-member channels for mention rendering.
 		ChannelNames map[string]string
 		FinderItems  []core.ChannelFinderItem
@@ -471,7 +474,10 @@ type (
 		PermalinkDomains []string // configured aliases for archive permalink routing
 		Theme            string   // resolved theme name (per-workspace or global default)
 		SidebarWidth     int      // resolved sidebar width (per-workspace or global default)
-		Channels         []sidebar.ChannelItem
+		// CollapsedSections is the workspace's saved collapsed sidebar
+		// sections, by header name; nil when it has none saved.
+		CollapsedSections []string
+		Channels          []sidebar.ChannelItem
 		// ChannelNames includes known non-member channels for mention rendering.
 		ChannelNames map[string]string
 		FinderItems  []core.ChannelFinderItem
