@@ -1,6 +1,7 @@
 package sidebar
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -12,15 +13,19 @@ import (
 )
 
 // countPlacement is a kitty placement as the avatar cache builds one
-// for c: a tile two cells wide, a pill one cell wider than its label.
+// for c: a tile or an icon two cells wide, a pill one cell wider than
+// its label.
 func countPlacement(c core.CountImage) string {
 	cells := len(c.Label) + 1
-	if c.Tile {
+	if c.Tile || c.Icon != "" {
 		cells = iconCells
 	}
 	id := strings.ReplaceAll(c.Label, "+", "0")
 	lead := "\x1b[38;2;0;2;" + id + "m"
-	if c.Tile {
+	switch {
+	case c.Icon != "":
+		lead = "\x1b[38;2;0;4;" + fmt.Sprint(len(c.Icon)) + "m"
+	case c.Tile:
 		lead = "\x1b[38;2;0;3;" + id + "m"
 	}
 	return lead + strings.Repeat(string(imgpkg.PlaceholderRune)+"̅", cells) + "\x1b[39m"
@@ -151,5 +156,107 @@ func TestCountImages_OffRestoresTheThemesBadge(t *testing.T) {
 		if !strings.Contains(plain, want) {
 			t.Errorf("without count images the view lost %q:\n%s", want, plain)
 		}
+	}
+}
+
+// A channel's hash and a private channel's lock are drawn as images
+// too, centred in the avatar's cells. As one-cell glyphs they sat half
+// a cell left of the avatars and group squares around them.
+func TestCountImages_ChannelRowsCarryAnIconInTheAvatarColumn(t *testing.T) {
+	var asked []core.CountImage
+	m := countSidebar(&asked)
+	view := m.View(14, 30)
+	plain := func(row string) string { return ansiRe.ReplaceAllString(row, "") }
+
+	want := nameColumn(t, plain(rowFor(t, view, "ann")), "ann")
+	for name, kind := range map[string]string{"general": core.IconHash, "secret": core.IconLock} {
+		row := rowFor(t, view, name)
+		if !strings.Contains(row, countPlacement(core.CountImage{Icon: kind})) {
+			t.Errorf("%s: row does not draw its %s icon: %q", name, kind, row)
+		}
+		if strings.ContainsAny(plain(row), "#◆") {
+			t.Errorf("%s: row still draws its glyph: %q", name, plain(row))
+		}
+		if got := nameColumn(t, plain(row), name); got != want {
+			t.Errorf("%s starts at cell %d, want %d like the avatar rows", name, got, want)
+		}
+	}
+	colours := map[string]bool{}
+	for _, c := range asked {
+		if c.Icon == core.IconHash || c.Icon == core.IconLock {
+			if c.Text == nil {
+				t.Fatalf("icon asked for with no colour: %+v", c)
+			}
+			r, g, b, _ := c.Text.RGBA()
+			colours[c.Icon+fmt.Sprint(r, g, b)] = true
+		}
+	}
+	if len(colours) != 2 {
+		t.Errorf("icon colours asked for = %v, want the unread channel's and the read one's to differ", colours)
+	}
+}
+
+// Slack heads its built-in sections with an icon where a custom
+// section has its emoji.
+func TestCountImages_BuiltInHeadersCarrySlacksIcons(t *testing.T) {
+	m := New([]ChannelItem{
+		{ID: "C1", Name: "alerts", Type: "channel", Section: "A"},
+		{ID: "C2", Name: "general", Type: "channel", Section: "CH"},
+		{ID: "D1", Name: "ann", Type: "dm", DMUserID: "U1", Section: "DMS"},
+		{ID: "DA", Name: "jira", Type: "app", DMUserID: "UAPP", Section: "APPS"},
+	})
+	m.SetSectionsProvider(&fakeProvider{ready: true, sections: []SectionMeta{
+		{ID: "A", Name: "Alerts", Emoji: "rocket", Type: "standard"},
+		{ID: "CH", Name: "Channels", Type: "channels"},
+		{ID: "DMS", Name: "Direct messages", Type: "direct_messages"},
+		{ID: "APPS", Name: "Recent apps", Type: "recent_apps"},
+	}})
+	m.SetSlackStyle(true)
+	m.SetAvatarFunc(func(string, core.AvatarBadge) string { return "" })
+	m.SetCountFunc(countPlacement)
+	view := m.View(16, 40)
+	plain := func(row string) string { return ansiRe.ReplaceAllString(row, "") }
+
+	want := nameColumn(t, plain(rowFor(t, view, "Alerts")), "Alerts")
+	for name, kind := range map[string]string{"Channels": core.IconChannels, "Direct messages": core.IconDirectMessages, "Apps": core.IconApps} {
+		row := rowFor(t, view, name)
+		if !strings.Contains(row, countPlacement(core.CountImage{Icon: kind})) {
+			t.Errorf("%s header does not draw its icon: %q", name, row)
+		}
+		if got := nameColumn(t, plain(row), name); got != want {
+			t.Errorf("%s starts at cell %d, want %d like the emoji section", name, got, want)
+		}
+	}
+	if row := rowFor(t, view, "Alerts"); strings.Contains(row, string(imgpkg.PlaceholderRune)) {
+		t.Errorf("a custom section must keep its emoji, not an icon: %q", row)
+	}
+
+	m.SetCountFunc(nil)
+	if row := rowFor(t, m.View(16, 40), "Direct messages"); strings.Contains(row, string(imgpkg.PlaceholderRune)) {
+		t.Errorf("header draws an icon with images off: %q", row)
+	}
+}
+
+// Slack marks your DM with yourself "you".
+func TestSlackStyle_SelfDMIsMarkedYou(t *testing.T) {
+	m := New([]ChannelItem{
+		{ID: "D1", Name: "ann", Type: "dm", DMUserID: "U1"},
+		{ID: "D2", Name: "bob", Type: "dm", DMUserID: "U2"},
+	})
+	m.SetSelfUserID("U2")
+	plain := func(row string) string { return ansiRe.ReplaceAllString(row, "") }
+	if got := plain(rowFor(t, m.View(8, 30), "bob")); strings.Contains(got, "you") {
+		t.Fatalf("default look marks the self DM: %q", got)
+	}
+	m.SetSlackStyle(true)
+	view := m.View(8, 30)
+	if got := plain(rowFor(t, view, "bob")); !strings.Contains(got, "bob  you") {
+		t.Errorf("self DM = %q, want it marked you", got)
+	}
+	if got := plain(rowFor(t, view, "ann")); strings.Contains(got, "you") {
+		t.Errorf("someone else's DM is marked you: %q", got)
+	}
+	if w := lipgloss.Width(rowFor(t, view, "bob")); w != 28 {
+		t.Errorf("self DM row is %d cells, want 28", w)
 	}
 }

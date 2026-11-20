@@ -212,13 +212,25 @@ type AvatarBadge struct {
 
 // CountImage is a count the sidebar draws as an image, Label in Text on
 // Fill: an unread badge's pill, or, with Tile, the square a group DM
-// has for an avatar.
+// has for an avatar. With Icon it is instead one of Slack's line icons
+// in Text: an Icon* name.
 type CountImage struct {
 	Label string
 	Fill  color.Color
 	Text  color.Color
 	Tile  bool
+	Icon  string
 }
+
+// The line icons a CountImage can name: one for each built-in section's
+// header, and the two a channel's row carries.
+const (
+	IconChannels       = "channels"
+	IconDirectMessages = "direct_messages"
+	IconApps           = "apps"
+	IconHash           = "hash"
+	IconLock           = "lock"
+)
 
 // ThreadSummary is one row in the Threads view: a thread the user is
 // involved in (authored, replied to, or @-mentioned in). Computed from

@@ -670,6 +670,9 @@ func run() error {
 		}
 		var sidebarAvatar func(userID string, badge core.AvatarBadge) string
 		sidebarCount := func(c core.CountImage) string {
+			if c.Icon != "" {
+				return avatarCache.GetIcon(c.Icon, c.Text)
+			}
 			return avatarCache.GetCount(c.Label, c.Fill, c.Text, c.Tile)
 		}
 		if proto == imgpkg.ProtoKitty {
