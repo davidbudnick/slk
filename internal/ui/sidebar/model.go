@@ -297,6 +297,10 @@ type Model struct {
 	// startCollapsed is the state of a section never toggled
 	// ([sidebar] start_collapsed).
 	startCollapsed bool
+	// savedCollapsed is the workspace's saved collapsed sections, by
+	// header name ([workspaces.<key>] collapsed_sections). Non-nil, it
+	// replaces startCollapsed as the state of a section never toggled.
+	savedCollapsed map[string]bool
 	// showUnreadInCollapsed keeps unread rows (and the active channel)
 	// of a collapsed section visible ([sidebar] show_unread_in_collapsed).
 	showUnreadInCollapsed bool
@@ -928,15 +932,7 @@ func (m *Model) dirty() { m.version++ }
 
 func New(items []ChannelItem) Model {
 	m := Model{items: items, mentionAbove: -1, mentionBelow: -1}
-	// Default collapse state: the firehose "Channels" section and the
-	// "Apps" section start collapsed so the sidebar opens on a tidy
-	// view of pinned sections + human DMs. Custom sections and DMs
-	// default to expanded. Users toggle individual sections with
-	// Enter/Space on the header.
-	m.collapsed = map[string]bool{
-		defaultChannelsSection: true,
-		defaultAppsSection:     true,
-	}
+	m.collapsed = defaultCollapsed()
 	m.rebuildFilter()
 	m.rebuildNav()
 	// Default selection is the synthetic Threads row at the top.
@@ -1002,16 +998,100 @@ func (m *Model) IsSectionHeaderSelected() (name string, ok bool) {
 	return n.header, true
 }
 
+// defaultCollapsed is the collapse state of a config-mode sidebar with
+// nothing saved: the firehose "Channels" section and the "Apps" section
+// start collapsed so the sidebar opens on a tidy view of pinned
+// sections + human DMs. Custom sections and DMs default to expanded.
+// Users toggle individual sections with Enter/Space on the header.
+func defaultCollapsed() map[string]bool {
+	return map[string]bool{
+		defaultChannelsSection: true,
+		defaultAppsSection:     true,
+	}
+}
+
 // IsCollapsed reports whether the named section is currently collapsed.
 // In Slack mode, the section parameter is a section ID and lookup uses
 // collapseByID (so renames preserve state). In config mode, it's a
 // section name and lookup uses collapsed. A section never toggled is
-// collapsed iff [sidebar] start_collapsed is on.
+// collapsed iff its header name is in the saved set, or, with nothing
+// saved, iff [sidebar] start_collapsed is on.
 func (m *Model) IsCollapsed(section string) bool {
-	if c, ok := m.collapseState()[section]; ok {
+	state := m.collapseState()
+	if c, ok := state[section]; ok {
 		return c
 	}
-	return m.startCollapsed
+	if m.savedCollapsed == nil {
+		return m.startCollapsed
+	}
+	name, _ := m.sectionDisplayMeta(section)
+	if !m.savedCollapsed[name] {
+		return false
+	}
+	// Kept by key from here on, so a Slack-side rename leaves it collapsed.
+	state[section] = true
+	return true
+}
+
+// SetSavedCollapsedSections applies a workspace's saved collapsed
+// sections, matched by header name: those are collapsed, every other
+// section expanded. Nil (nothing saved) restores the defaults. Either
+// way the previous workspace's toggles are dropped.
+func (m *Model) SetSavedCollapsedSections(names []string) {
+	m.collapsed = defaultCollapsed()
+	m.collapseByID = nil
+	m.savedCollapsed = nil
+	if names != nil {
+		m.collapsed = map[string]bool{}
+		m.savedCollapsed = make(map[string]bool, len(names))
+		for _, name := range names {
+			m.savedCollapsed[name] = true
+		}
+	}
+	m.rebuildNavPreserveCursor()
+	m.cacheValid = false
+	m.dirty()
+}
+
+// CollapsedSections lists the header names of the collapsed sections,
+// in sidebar order, for saving. Names it cannot see now (a section with
+// no rows, Slack sections not loaded yet) are kept, sorted, at the end.
+// Never nil, so an all-expanded sidebar still reads as saved.
+func (m *Model) CollapsedSections() []string {
+	slack := m.useSlackSections()
+	var keys []string
+	if slack {
+		for _, meta := range m.sectionsProvider.OrderedSlackSections() {
+			keys = append(keys, meta.ID)
+		}
+	} else {
+		keys = m.modelOrderedSections(m.filtered)
+	}
+	out := []string{}
+	listed := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		name, _ := m.sectionDisplayMeta(key)
+		was := listed[name]
+		listed[name] = was || m.IsCollapsed(key)
+		if listed[name] && !was {
+			out = append(out, name)
+		}
+	}
+	var rest []string
+	for name := range m.savedCollapsed {
+		if _, seen := listed[name]; !seen {
+			rest = append(rest, name)
+		}
+	}
+	if !slack {
+		for name, collapsed := range m.collapsed {
+			if _, seen := listed[name]; collapsed && !seen && !m.savedCollapsed[name] {
+				rest = append(rest, name)
+			}
+		}
+	}
+	sort.Strings(rest)
+	return append(out, rest...)
 }
 
 // collapseState is the toggled-state map for the current mode.

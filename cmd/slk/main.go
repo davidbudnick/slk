@@ -722,7 +722,23 @@ func run() error {
 			log.Printf("save workspace sidebar width: %v", err)
 		}
 	}
-	app.SetSettingsService(core.NewSettingsService(saveTheme, saveSidebarWidth))
+
+	// Wire collapsed-sections saver. Like a workspace theme save, it
+	// names its workspace rather than reading router.Active().
+	saveCollapsedSections := func(teamID string, names []string) {
+		if teamID == "" {
+			return
+		}
+		teamName := teamID
+		if wctx := router.ByID(teamID); wctx != nil && wctx.TeamName != "" {
+			teamName = wctx.TeamName
+		}
+		tomlKey := workspacesStore.SaveCollapsedSections(teamID, names)
+		if err := saveWorkspaceCollapsedSections(configPath, tomlKey, teamID, teamName, names); err != nil {
+			log.Printf("save workspace collapsed sections: %v", err)
+		}
+	}
+	app.SetSettingsService(core.NewSettingsService(saveTheme, saveSidebarWidth, saveCollapsedSections))
 
 	// Suppression rules (:suppress, [[workspaces.<key>.suppress]]):
 	// the store is the one copy, read by every workspace's event
@@ -1584,15 +1600,17 @@ func run() error {
 		// then on; only switchSeq is kept for AfterSwitch.
 		switchNames, switchSeq := wctx.UserNames.SnapshotForUI()
 		switchChannels, switchChannelSeq := wctx.ChannelResolver.nameStore().SnapshotForUI()
+		switchCollapsed, _ := snap.ResolveCollapsedSections(teamID)
 		return ui.WorkspaceSwitchedMsg{
-			TeamID:           wctx.TeamID,
-			TeamName:         wctx.TeamName,
-			Domain:           wctx.Client.TeamSubdomain(),
-			PermalinkDomains: snap.PermalinkDomains(teamID),
-			Theme:            snap.ResolveTheme(teamID),
-			SidebarWidth:     snap.ResolveWidth(teamID),
-			Channels:         channels,
-			FinderItems:      wctx.FinderItems,
+			TeamID:            wctx.TeamID,
+			TeamName:          wctx.TeamName,
+			Domain:            wctx.Client.TeamSubdomain(),
+			PermalinkDomains:  snap.PermalinkDomains(teamID),
+			Theme:             snap.ResolveTheme(teamID),
+			SidebarWidth:      snap.ResolveWidth(teamID),
+			CollapsedSections: switchCollapsed,
+			Channels:          channels,
+			FinderItems:       wctx.FinderItems,
 			// A private copy: the UI must never share a map with the
 			// engine's goroutines (see userNameStore).
 			UserNames:        switchNames,
@@ -1862,13 +1880,15 @@ func run() error {
 			// then on; only readySeq is kept for NotifyFrom below.
 			readyNames, readySeq := wctx.UserNames.SnapshotForUI()
 			readyChannels, readyChannelSeq := wctx.ChannelResolver.nameStore().SnapshotForUI()
+			readyCollapsed, _ := cfgSnap.ResolveCollapsedSections(wctx.TeamID)
 			p.Send(ui.WorkspaceReadyMsg{
-				TeamID:           wctx.TeamID,
-				TeamName:         wctx.TeamName,
-				Domain:           wctx.Client.TeamSubdomain(),
-				PermalinkDomains: cfgSnap.PermalinkDomains(wctx.TeamID),
-				Theme:            cfgSnap.ResolveTheme(wctx.TeamID),
-				SidebarWidth:     cfgSnap.ResolveWidth(wctx.TeamID),
+				TeamID:            wctx.TeamID,
+				TeamName:          wctx.TeamName,
+				Domain:            wctx.Client.TeamSubdomain(),
+				PermalinkDomains:  cfgSnap.PermalinkDomains(wctx.TeamID),
+				Theme:             cfgSnap.ResolveTheme(wctx.TeamID),
+				SidebarWidth:      cfgSnap.ResolveWidth(wctx.TeamID),
+				CollapsedSections: readyCollapsed,
 				// Detach both UI snapshots before the event owner starts.
 				Channels:    slices.Clone(wctx.Channels),
 				FinderItems: slices.Clone(wctx.FinderItems),

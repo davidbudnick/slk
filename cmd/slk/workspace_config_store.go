@@ -53,6 +53,20 @@ func (s *workspaceConfigStore) SaveSidebarWidth(teamID string, width int) (tomlK
 	return tomlKey
 }
 
+// SaveCollapsedSections is SaveTheme's sibling for the collapsed sidebar
+// sections. It keeps its own non-nil copy of names, so an empty list
+// still reads as saved.
+func (s *workspaceConfigStore) SaveCollapsedSections(teamID string, names []string) (tomlKey string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tomlKey = s.tomlKeyFor(teamID)
+	ws := s.cfg.Workspaces[tomlKey]
+	ws.TeamID = teamID
+	ws.CollapsedSections = append([]string{}, names...)
+	s.cfg.Workspaces[tomlKey] = ws
+	return tomlKey
+}
+
 // KeyFor returns the TOML key of teamID's block (see tomlKeyFor).
 func (s *workspaceConfigStore) KeyFor(teamID string) string {
 	s.mu.Lock()

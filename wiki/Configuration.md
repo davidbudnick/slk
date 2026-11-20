@@ -104,8 +104,9 @@ active_only = false         # true: hide conversations with no activity in 30 da
                             # every section (Slack's "Active only"; unread ones stay)
 mouse_resize = false        # true: drag the sidebar's right border to resize it
                             # ([ and ] also resize; the width is saved per workspace)
-start_collapsed = false     # true: every section starts collapsed (Space/Enter
-                            # on a header expands it until slk restarts)
+start_collapsed = false     # true: every section starts collapsed, until you
+                            # toggle one: from then on the workspace's saved
+                            # collapsed_sections decides (see below)
 show_unread_in_collapsed = false  # true: a collapsed section still lists its
                                   # unread channels (and the open one)
 enter_keeps_focus = false   # true: Enter opens a conversation (or Threads,
@@ -168,6 +169,8 @@ order   = 1                     # rail position; 1-based, used by 1-9 keys
 theme   = "dracula"             # overrides [appearance].theme
 use_slack_sections = false      # this workspace uses [sections.*] globs;
                                 # other workspaces still use Slack sections
+collapsed_sections = ["Channels", "Apps"]  # sections that start collapsed;
+                                # slk rewrites this when you toggle one
 
 [workspaces.work.sections.Alerts]
 channels = ["alerts", "*-alerts"]
@@ -288,6 +291,31 @@ regardless of network timing, even without an explicit `order` set.
 
 Legacy configs that key the block by raw team ID
 (`[workspaces.T01ABCDEF]`) keep working unchanged.
+
+## Collapsed sections
+
+slk remembers which sidebar sections are collapsed. Each time you collapse
+or expand a section (`Space`, `Enter` or a click on its header) it rewrites
+`collapsed_sections` in that workspace's `[workspaces.<slug>]` block, and
+restores it on the next start and on every workspace switch:
+
+```toml
+[workspaces.work]
+team_id = "T01ABCDEF"
+collapsed_sections = ["Team", "Direct messages"]
+```
+
+- Sections are listed by name, as their headers read. A collapsed section
+  renamed in Slack while slk runs stays collapsed; renamed while slk is
+  closed, it starts expanded until you collapse it again.
+- Once the key exists it wins: a section not in the list starts expanded,
+  whatever `[sidebar] start_collapsed` says, and `collapsed_sections = []`
+  starts everything expanded.
+- Without the key nothing changes: `start_collapsed` applies, and with
+  `[sections.*]` from config the Channels and Apps sections start collapsed.
+  Delete the line to go back to that.
+- Names slk cannot see when it saves (a section with no conversations right
+  now) stay in the list.
 
 ## Terminal-palette themes (`ANSI Dark`, `ANSI Light`)
 
