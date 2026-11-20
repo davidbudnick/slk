@@ -321,7 +321,7 @@ func (p *Preview) View(width, height int, proto Protocol) string {
 		b.WriteByte('\n')
 	}
 
-	hintText := "Esc/q close  •  Enter open in system viewer"
+	hintText := "Space/Esc close  •  Enter open in system viewer"
 	if p.sibCount > 1 {
 		hintText = "h/\u2190 prev  •  l/\u2192 next  •  " + hintText
 	}
@@ -377,7 +377,7 @@ func (p *Preview) viewLoading(width, height int) string {
 		}
 		b.WriteByte('\n')
 	}
-	hintText := "Esc/q close"
+	hintText := "Space/Esc close"
 	if p.sibCount > 1 {
 		hintText = "h/\u2190 prev  •  l/\u2192 next  •  " + hintText
 	}

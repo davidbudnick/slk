@@ -1249,7 +1249,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// While the full-screen image preview overlay is open, route close
 	// and cycle keys directly:
-	//   - Esc/q: dismiss
+	//   - Esc/q/Space: dismiss
 	//   - Enter: dismiss + launch OS image viewer
 	//   - h or left arrow: previous sibling image (wraps)
 	//   - l or right arrow: next sibling image (wraps)
@@ -1260,7 +1260,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.preview.Active() {
 		if km, ok := msg.(tea.KeyMsg); ok {
 			switch km.String() {
-			case "esc", "q":
+			case "esc", "q", "space":
 				a.preview.Close()
 				return a, nil
 			case "enter":

@@ -234,13 +234,15 @@ func handleNormalMode(a *App, msg tea.KeyMsg) tea.Cmd {
 
 	case key.Matches(msg, a.keys.ToggleSection):
 		// Space on a sidebar section header toggles its collapsed
-		// state; elsewhere it falls through to whatever the focused
-		// panel does with a literal space (typically nothing in
-		// normal mode).
+		// state. On a message it opens the image, as Space does in
+		// Slack and in Quick Look; a second Space closes it.
 		if a.focusedPanel == PanelSidebar {
 			if a.toggleSidebarSection() {
 				return nil
 			}
+		}
+		if a.focusedPanel == PanelMessages || a.focusedPanel == PanelThread {
+			return a.openImagePreviewOfSelected()
 		}
 
 	case key.Matches(msg, a.keys.Top):
