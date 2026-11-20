@@ -999,23 +999,32 @@ func TestApp_SidebarAvatarsNeedTheSettingAndTheService(t *testing.T) {
 	a := NewApp()
 	a.width = 160
 	a.height = 30
-	a.sidebar.SetItems([]sidebar.ChannelItem{{ID: "D1", Name: "ann", Type: "dm", DMUserID: "U1"}})
-	asked := 0
+	a.sidebar.SetItems([]sidebar.ChannelItem{
+		{ID: "D1", Name: "ann", Type: "dm", DMUserID: "U1"},
+		{ID: "G1", Name: "bob, cat", Type: "group_dm", GroupSize: 2},
+	})
+	asked, counts := 0, 0
 	plain := core.NewAvatarService(func(string) string { return "" }, nil)
 	withSidebar := core.NewSidebarAvatarService(plain, func(string, core.AvatarBadge) string {
 		asked++
+		return ""
+	}, func(core.CountImage) string {
+		counts++
 		return ""
 	})
 
 	a.SetAvatarService(withSidebar)
 	_ = a.View()
-	if asked != 0 {
+	if asked != 0 || counts != 0 {
 		t.Fatal("sidebar asked for avatars with the setting off")
 	}
 	a.SetSidebarAvatars(true)
 	_ = a.View()
 	if asked == 0 {
 		t.Fatal("sidebar did not ask for its DM's avatar")
+	}
+	if counts == 0 {
+		t.Fatal("sidebar did not ask for its group DM's size as an image")
 	}
 	asked = 0
 	a.Update(messages.AvatarReadyMsg{UserID: "U1"})

@@ -865,7 +865,7 @@ func TestBootConversations_SkipsClosedMPIMs(t *testing.T) {
 	res := &bootstrap.Result{
 		Channels: []boot.Channel{
 			{ID: "C1", Name: "live", IsChannel: true},
-			{ID: "G1", Name: "mpdm-a--b--c-1", IsMPIM: true},
+			{ID: "G1", Name: "mpdm-a--b--c-1", IsMPIM: true, Members: []string{"UA", "UB", "UC"}},
 			{ID: "G2", Name: "mpdm-a--d--e-1", IsMPIM: true},
 		},
 		IsOpen: []string{"G1"},
@@ -873,6 +873,9 @@ func TestBootConversations_SkipsClosedMPIMs(t *testing.T) {
 	ids := map[string]bool{}
 	for _, c := range bootConversations(res) {
 		ids[c.ID] = true
+		if c.ID == "G1" && len(c.Members) != 3 {
+			t.Errorf("open MPIM's members = %v, want the three userBoot listed", c.Members)
+		}
 	}
 	if !ids["G1"] {
 		t.Error("open MPIM dropped")

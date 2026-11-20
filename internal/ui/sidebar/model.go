@@ -68,6 +68,7 @@ type ChannelItem struct {
 	IsStarred    bool
 	Presence     string // for DMs: active, away, dnd
 	DMUserID     string // for DMs: the user ID of the other party
+	GroupSize    int    // for group DMs: the other people in it; 0 if unknown
 	// Status is the DM peer's custom status and DND state, kept current
 	// by UpdateStatusByUser / UpdateDNDByUser the same way Presence is.
 	Status peerstatus.Status
@@ -326,6 +327,9 @@ type Model struct {
 	// avatarFn draws DM and app avatars in place of their glyphs
 	// ([sidebar] avatars); nil keeps the glyphs.
 	avatarFn AvatarFunc
+	// countFn draws mention badges and group DM icons as images; nil
+	// keeps the theme's badge and the glyph.
+	countFn CountFunc
 	// selfUserID is the user's own ID, for telling their DM with
 	// themselves from the others.
 	selfUserID string
@@ -888,6 +892,19 @@ func (m *Model) SetAvatarFunc(fn AvatarFunc) {
 	m.dirty()
 }
 
+// CountFunc returns a count drawn as an image, or "" when it can't be.
+type CountFunc func(c core.CountImage) string
+
+// SetCountFunc draws each mention badge as Slack's pill, which leaves a
+// gap between the badges of adjacent rows, and each group DM's icon as
+// the number of people in it on a square the size of an avatar. Nil
+// restores the theme's badge and the glyph.
+func (m *Model) SetCountFunc(fn CountFunc) {
+	m.countFn = fn
+	m.cacheValid = false
+	m.dirty()
+}
+
 // HandleAvatarReady redraws the rows once userID's avatar has loaded.
 func (m *Model) HandleAvatarReady(userID string) {
 	if m.avatarFn == nil {
@@ -918,7 +935,36 @@ func (m *Model) rowIcon(item ChannelItem, glyph string, now time.Time) string {
 			return av + "\x1b[0m "
 		}
 	}
+	if item.Type == "group_dm" && item.GroupSize > 0 {
+		tile := core.CountImage{Label: fmt.Sprint(item.GroupSize), Fill: styles.SidebarTextMuted, Text: styles.ThemeSidebarBackground(), Tile: true}
+		if img := m.countImage(tile); img != "" {
+			return img + " "
+		}
+	}
 	return glyph + strings.Repeat(" ", max(iconCells+1-lipgloss.Width(glyph), 0))
+}
+
+// countImage is c drawn as an image and closed with a reset, so the row
+// re-applies its own colours after it. "" when no image can be drawn.
+func (m *Model) countImage(c core.CountImage) string {
+	if m.countFn == nil {
+		return ""
+	}
+	img := m.countFn(c)
+	if img == "" || strings.Contains(img, "\n") {
+		return ""
+	}
+	return img + "\x1b[0m"
+}
+
+// mentionBadge is text as a row's or header's mention badge: Slack's
+// pill as an image when one can be drawn, else the theme's badge.
+func (m *Model) mentionBadge(text string, muted bool) string {
+	style := mentionBadgeStyleFor(muted)
+	if img := m.countImage(core.CountImage{Label: text, Fill: style.GetBackground(), Text: style.GetForeground()}); img != "" {
+		return img
+	}
+	return style.Render(text)
 }
 
 // presenceBadge is the mark on a DM peer's avatar: Slack's green dot
@@ -2308,7 +2354,7 @@ func (m *Model) buildCache(width int) {
 		hasBadge := false
 		trailerCells := 2 // worst-case cost of the dot glyph
 		if badgeText := formatMentionBadge(item.MentionBadge(readState[item.ID])); badgeText != "" {
-			unreadDot = mentionBadgeStyleFor(item.IsMuted).Render(badgeText)
+			unreadDot = m.mentionBadge(badgeText, item.IsMuted)
 			hasBadge = true
 			// Exact, not worst-case. The 2-cell padding above is a
 			// hedge against East-Asian-Ambiguous glyphs, whose column
@@ -2663,7 +2709,7 @@ func (m *Model) renderSectionHeaderLabel(name string, width int, cursor string, 
 			// The explicit separator space mirrors the rows' trailer
 			// (`name + " " + unreadDot`); the pill's own Padding(0, 1)
 			// supplies the rest of the gap.
-			aggregates += " " + mentionBadgeStyleFor(mentionsAllMuted).Render(badgeText)
+			aggregates += " " + m.mentionBadge(badgeText, mentionsAllMuted)
 		}
 	}
 
@@ -2785,7 +2831,7 @@ func (m *Model) countBadge(left string, n, width int, dotStyle lipgloss.Style) s
 	if !m.rightAlignBadges {
 		return " " + dotStyle.Render("•"+fmt.Sprintf("%d", n))
 	}
-	badge := styles.MentionBadgeStyle().Render(formatMentionBadge(n))
+	badge := m.mentionBadge(formatMentionBadge(n), false)
 	return badgeGap(width, left, badge) + badge
 }
 

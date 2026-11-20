@@ -88,6 +88,37 @@ func TestBuildChannelItem_GroupDMOmitsSelf(t *testing.T) {
 	if finderItem.Name != "Alice, Bob" {
 		t.Errorf("finder Name = %q, want %q", finderItem.Name, "Alice, Bob")
 	}
+	if item.GroupSize != 2 {
+		t.Errorf("GroupSize = %d, want the 2 people the name lists", item.GroupSize)
+	}
+}
+
+// A group DM with a custom name has no mpdm name to count from; its
+// size comes from the member list userBoot sends, less the user.
+func TestBuildChannelItem_GroupDMSizeFromMembers(t *testing.T) {
+	wctx := &WorkspaceContext{
+		UserID:            "UGRANT",
+		UserHandle:        "grant",
+		UserNames:         newUserNameStore(nil),
+		UserNamesByHandle: map[string]string{},
+	}
+	ch := slack.Channel{
+		GroupConversation: slack.GroupConversation{
+			Conversation: slack.Conversation{
+				ID:     "G1",
+				IsMpIM: true,
+			},
+			Name:    "Launch crew",
+			Members: []string{"UALICE", "UGRANT", "UBOB", "UCAT"},
+		},
+	}
+	item, _ := buildChannelItem(ch, wctx, config.Config{}, "T1")
+	if item.Name != "Launch crew" {
+		t.Errorf("Name = %q, want the custom name", item.Name)
+	}
+	if item.GroupSize != 3 {
+		t.Errorf("GroupSize = %d, want the 3 other members", item.GroupSize)
+	}
 }
 
 func TestBuildChannelItem_Channel(t *testing.T) {

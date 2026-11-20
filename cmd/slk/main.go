@@ -669,6 +669,9 @@ func run() error {
 			sixelAvatar = avatarCache.GetSixel
 		}
 		var sidebarAvatar func(userID string, badge core.AvatarBadge) string
+		sidebarCount := func(c core.CountImage) string {
+			return avatarCache.GetCount(c.Label, c.Fill, c.Text, c.Tile)
+		}
 		if proto == imgpkg.ProtoKitty {
 			sidebarAvatar = func(userID string, badge core.AvatarBadge) string {
 				if small := avatarCache.GetSidebar(userID, badge.Color, badge.Hollow); small != "" {
@@ -686,7 +689,7 @@ func run() error {
 			}
 			lazyAvatar(router.Active(), avatarCache, userID)
 			return ""
-		}, sixelAvatar), sidebarAvatar))
+		}, sixelAvatar), sidebarAvatar, sidebarCount))
 	}
 
 	// Wire theme switcher: dispatch to the appropriate saver based on scope.

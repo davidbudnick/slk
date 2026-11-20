@@ -210,6 +210,16 @@ type AvatarBadge struct {
 	Hollow bool
 }
 
+// CountImage is a count the sidebar draws as an image, Label in Text on
+// Fill: an unread badge's pill, or, with Tile, the square a group DM
+// has for an avatar.
+type CountImage struct {
+	Label string
+	Fill  color.Color
+	Text  color.Color
+	Tile  bool
+}
+
 // ThreadSummary is one row in the Threads view: a thread the user is
 // involved in (authored, replied to, or @-mentioned in). Computed from
 // the local cache; v1 has no Slack-side authoritative data.
