@@ -1530,7 +1530,10 @@ func run() error {
 				}
 				ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 				defer cancel()
-				return runCommand(ctx, wctx.Client, channelID, threadTS, command, args)
+				return runCommand(ctx, wctx.Client, wctx.AppCommands(), channelID, threadTS, command, args)
+			},
+			List: func() []core.SlashCommand {
+				return router.Active().AppCommands()
 			},
 		}))
 
@@ -1905,6 +1908,11 @@ func run() error {
 			// for why the bootstrap subset alone must not be treated as
 			// an answer.
 			go refreshWorkspaceEmoji(ctx, wctx, wctx.Client, db, p, wctx.TeamID, wctx.customEmojiFreshFor)
+
+			// Fetch the workspace's slash commands for the composer's
+			// "/" menu. Best-effort: without them the menu does not
+			// open, and typed commands still run.
+			go loadAppCommands(ctx, wctx, wctx.Client)
 
 			// Fetch workspace usergroups in the background. When done,
 			// send a follow-up so render caches and compose pickers can

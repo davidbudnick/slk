@@ -383,3 +383,101 @@ func TestSlashCommand_BuiltinRunsInsteadOfRemote(t *testing.T) {
 		t.Errorf("compose = %q, mode = %v; want cleared and ModeNormal", a.compose.Value(), a.mode)
 	}
 }
+
+// menuApp is slashApp with a command list behind the "/" menu.
+func menuApp(t *testing.T) (*App, *[]runCall) {
+	t.Helper()
+	a, calls := slashApp(t, nil)
+	a.SetCommandService(core.NewCommandService(core.CommandServiceFuncs{
+		Run: func(team string, ch ids.ChannelID, th ids.ThreadTS, name, args string) error {
+			*calls = append(*calls, runCall{team, string(ch), string(th), name, args})
+			return nil
+		},
+		List: func() []core.SlashCommand {
+			return []core.SlashCommand{
+				{Name: "/giphy", Usage: "[text]", Desc: "Post a random gif", Type: core.SlashCommandService, AppName: "Giphy"},
+				{Name: "/shrug", Usage: "your text", Type: core.SlashCommandCore},
+			}
+		},
+	}))
+	return a, calls
+}
+
+// typeKeysIntoApp sends each rune of s through the real Update chain,
+// into the channel composer.
+func typeKeysIntoApp(a *App, s string) {
+	_ = a.compose.Focus()
+	for _, r := range s {
+		a.Update(keyPress(r))
+	}
+}
+
+// Typing "/" in the composer shows the workspace's commands above it.
+// Enter on the menu completes the selected command and runs nothing; a
+// second Enter, on the completed text, runs it.
+func TestSlashMenu_EnterCompletesThenRuns(t *testing.T) {
+	a, calls := menuApp(t)
+
+	typeKeysIntoApp(a, "/gi")
+	if view := a.View().Content; !strings.Contains(view, "/giphy") || !strings.Contains(view, "Command · Giphy · Post a random gif") {
+		t.Fatalf("the screen does not show the menu's /giphy row:\n%s", view)
+	}
+
+	_ = pressEnter(a)
+	if len(*calls) != 0 {
+		t.Fatalf("Enter on the menu ran a command: %+v", *calls)
+	}
+	if got := a.compose.Value(); got != "/giphy " {
+		t.Fatalf("Enter on the menu left %q; want the completed %q", got, "/giphy ")
+	}
+	if a.mode != ModeInsert || a.compose.PickerActive() {
+		t.Fatalf("after completing: mode=%v picker=%v; want insert mode with the menu closed", a.mode, a.compose.PickerActive())
+	}
+
+	typeKeysIntoApp(a, "cats")
+	_ = deliveredMsgs[commandRanMsg](t, pressEnter(a))
+	want := runCall{teamID: "T1", channelID: "C1", name: "/giphy", args: "cats"}
+	if len(*calls) != 1 || (*calls)[0] != want {
+		t.Fatalf("Run calls = %+v; want [%+v]", *calls, want)
+	}
+}
+
+// A name the list does not have shows no menu, so the first Enter runs
+// it; and Esc on the menu closes the menu, not insert mode.
+func TestSlashMenu_GivesKeysBackWithoutAMatch(t *testing.T) {
+	a, calls := menuApp(t)
+	typeKeysIntoApp(a, "/deploy")
+	if a.compose.PickerActive() {
+		t.Fatal("the menu holds the keys for a name it does not list")
+	}
+	_ = deliveredMsgs[commandRanMsg](t, pressEnter(a))
+	if len(*calls) != 1 || (*calls)[0].name != "/deploy" {
+		t.Fatalf("Run calls = %+v; want /deploy run by the first Enter", *calls)
+	}
+
+	a, _ = menuApp(t)
+	typeKeysIntoApp(a, "/")
+	a.Update(keyCode(tea.KeyEscape))
+	if a.mode != ModeInsert || a.compose.PickerActive() || a.compose.Value() != "/" {
+		t.Errorf("after Esc on the menu: mode=%v picker=%v text=%q; want insert mode, menu closed, text kept",
+			a.mode, a.compose.PickerActive(), a.compose.Value())
+	}
+	a.Update(keyCode(tea.KeyEscape))
+	if a.mode != ModeNormal {
+		t.Errorf("a second Esc left mode %v; want normal", a.mode)
+	}
+}
+
+// Without a list (not loaded, or the workspace refused it) there is no
+// menu and commands run as before.
+func TestSlashMenu_NoListNoMenu(t *testing.T) {
+	a, calls := slashApp(t, nil)
+	typeKeysIntoApp(a, "/giphy cats")
+	if a.compose.PickerActive() {
+		t.Fatal("a menu opened with no command list")
+	}
+	_ = deliveredMsgs[commandRanMsg](t, pressEnter(a))
+	if len(*calls) != 1 {
+		t.Fatalf("Run calls = %+v; want the command run", *calls)
+	}
+}

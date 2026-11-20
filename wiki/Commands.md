@@ -63,6 +63,17 @@ Slash commands work in both composers, the channel's and a thread's. Press
 `Enter` on text that starts with `/name` and slk runs the command instead of
 posting the text.
 
+Type `/` in an empty composer and a menu lists the workspace's commands, as
+Slack's does: each with its usage and, under it, where it comes from and what
+it does (`App · Giphy · Post a random gif to channel`). Keep typing to narrow
+it: names that start with what you typed come first, then names that contain
+it. `↑`/`↓` (or `Ctrl+p`/`Ctrl+n`) move, `Tab` or `Enter` puts the selected
+command in the composer for you to finish, and `Esc` closes the menu. `Enter`
+on the menu never runs a command; the next `Enter` does. A name the menu does
+not have shows no menu, and `Enter` runs it as typed. The list is read from
+Slack when slk connects; until it has arrived there is no menu and commands
+still run.
+
 - Start the message with a space to post text that begins with `/name` as an
   ordinary message. Text like `/tmp/foo` or a lone `/` is already posted as
   written.
