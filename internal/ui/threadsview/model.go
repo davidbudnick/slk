@@ -1,5 +1,8 @@
 // Package threadsview is the UI model for the "Threads" panel: a vertical
-// list of threads the user is involved in, sourced from core.ThreadSummary.
+// list of threads the user is involved in, sourced from core.ThreadSummary,
+// drawn the way Slack's Threads view draws them: a channel header and the
+// thread's participants above a card holding the parent message, a "Show N
+// more replies" link and the newest replies.
 //
 // The model is purely presentation: callers (typically the App layer) push
 // new summaries via SetSummaries whenever the cache produces a fresh ranking,
@@ -8,78 +11,38 @@
 package threadsview
 
 import (
+	"io"
 	"slices"
-	"strconv"
 	"strings"
-	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/gammons/slk/internal/core"
+	imgpkg "github.com/gammons/slk/internal/image"
 	"github.com/gammons/slk/internal/ui/messages"
 	"github.com/gammons/slk/internal/ui/styles"
 	"github.com/gammons/slk/internal/usergroups"
-	"github.com/muesli/reflow/truncate"
 )
 
-// cardStride is the number of lines a single rendered thread card occupies
-// in the flat line list, including the trailing blank separator. The very
-// last card has no trailing separator, so the last card occupies
-// cardContentLines lines instead.
-const (
-	cardContentLines = 3 // header + preview + footer
-	cardStride       = cardContentLines + 1
-)
+// threadKey identifies a thread across reloads that reorder the list.
+type threadKey struct{ channelID, threadTS string }
 
-// Local styles (kept package-private so we don't pollute the shared styles
-// package for one panel). Built from the shared color tokens so theme
-// changes still propagate via styles.Apply().
-func mutedStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(styles.TextMuted)
+// cardKey is everything a rendered card depends on.
+type cardKey struct {
+	summary  core.ThreadSummary
+	width    int
+	selected bool
+	focused  bool
+	last     bool
+	gen      int64
+	theme    int64
 }
 
-func unreadDotStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-}
-
-// channelNameStyle themes the channel name in a thread card so it remains
-// readable on light themes (where the default foreground is dark on a dark
-// Background panel). Uses the theme's primary/link color, mirroring the
-// sidebar's "channel link" convention.
-func channelNameStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(styles.Primary).Bold(true)
-}
-
-// thickLeftBorder mirrors the messages package convention: a 1-column-wide
-// left border using "▌". Selected rows render with Accent (green) foreground;
-// non-selected rows render with the panel background so the column is
-// reserved (keeps content alignment uniform) but invisible.
-var thickLeftBorder = lipgloss.Border{Left: "▌"}
-
-func borderInvisStyle() lipgloss.Style {
-	return lipgloss.NewStyle().
-		BorderStyle(styles.InvisibleLeftBorder()).BorderLeft(true).
-		BorderForeground(styles.Background).
-		BorderBackground(styles.Background)
-}
-
-// borderSelectStyle returns the bordered style for the selected card.
-// focused drives both the border foreground (Accent vs TextMuted) and
-// the row background (focused tint vs unfocused tint), matching the
-// "you're acting on this" language used by the messages and thread
-// panels.
-func borderSelectStyle(focused bool) lipgloss.Style {
-	return lipgloss.NewStyle().
-		BorderStyle(thickLeftBorder).BorderLeft(true).
-		BorderForeground(styles.SelectionBorderColor(focused)).
-		BorderBackground(styles.SelectionTintColor(focused)).
-		Background(styles.SelectionTintColor(focused))
-}
-
-// borderFillStyle returns the row-fill style for unselected cards
-// (themed Background). Selected cards use a SelectionTintColor fill
-// inside renderCard so the tint reaches the right edge.
-func borderFillStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Background(styles.Background)
+// renderedCard is one card's rows (ending in its spacer row, except the
+// last card's) and the kitty uploads its emoji placements need.
+type renderedCard struct {
+	key     cardKey
+	lines   []string
+	flushes []func(io.Writer) error
 }
 
 // Model holds the threads-list state.
@@ -90,15 +53,22 @@ type Model struct {
 	userGroups   map[string]string
 	selfUserID   string
 
+	avatarFn         messages.AvatarFunc
+	emojiCtx         messages.EmojiContext
+	coloredUsernames bool
+
 	selected int
-	yOffset  int
 	focused  bool
 
-	// snappedSelection lets View() avoid snapping yOffset back to the
-	// selected row on every render. While snappedSelection == selected,
-	// programmatic scrolls (ScrollUp/ScrollDown) are preserved. The flag
-	// is reset by ScrollUp/ScrollDown so the next selection move re-snaps,
-	// matching the sidebar's behavior (sidebar/model.go:471-483).
+	// topCard and topRow anchor the viewport: its first row is row
+	// topRow of card topCard. Cards differ in height, so the anchor is
+	// kept in card terms and only the cards near it are ever rendered.
+	topCard, topRow int
+	width           int
+
+	// snappedSelection lets View() avoid snapping the viewport back to
+	// the selected card on every render. While snappedSelection ==
+	// selected, programmatic scrolls (ScrollUp/ScrollDown) are preserved.
 	snappedSelection int
 	hasSnapped       bool
 
@@ -108,13 +78,19 @@ type Model struct {
 	// banner above the list/empty-state. Default is true (optimistic).
 	subscriptionsAvailable bool
 
+	cards map[threadKey]renderedCard
+	gen   int64
+
+	// rowCards maps each row of the last frame to the card drawn on it,
+	// or -1 for chrome, spacer and filler rows. ClickAt reads it.
+	rowCards []int
+
 	version int64
 }
 
 // New creates an empty Model. userNames is the user-id -> display-name map
-// used to resolve mention IDs in the parent-text preview and the author /
-// last-reply-by fields. selfUserID is the current user's ID; rows whose
-// author / replier is selfUserID render as "me".
+// used to resolve mention IDs and authors. selfUserID is the current
+// user's ID; the participants line names that user "you".
 func New(userNames map[string]string, selfUserID string) Model {
 	if userNames == nil {
 		userNames = map[string]string{}
@@ -124,6 +100,7 @@ func New(userNames map[string]string, selfUserID string) Model {
 		selfUserID:             selfUserID,
 		channelNames:           map[string]string{},
 		subscriptionsAvailable: true,
+		cards:                  map[threadKey]renderedCard{},
 	}
 }
 
@@ -131,12 +108,20 @@ func New(userNames map[string]string, selfUserID string) Model {
 // change. App's panel-output cache uses this to reuse rendered frames.
 func (m *Model) Version() int64 { return m.version }
 
+// dirty marks the next View as different from the last.
 func (m *Model) dirty() { m.version++ }
+
+// InvalidateCache drops every rendered card, for a change that reaches
+// all of them (names, emoji, avatars, theme options).
+func (m *Model) InvalidateCache() {
+	m.gen++
+	m.dirty()
+}
 
 // SetUserNames replaces the user id -> display name map. No-op (no version
 // bump) when the new map has the same length and the same key/value pairs as
-// the current one — required so the App-level panel cache (app.go:4068-4093)
-// can hit on idle re-renders.
+// the current one — required so the App-level panel cache can hit on idle
+// re-renders.
 func (m *Model) SetUserNames(names map[string]string) {
 	if names == nil {
 		names = map[string]string{}
@@ -145,15 +130,14 @@ func (m *Model) SetUserNames(names map[string]string) {
 		return
 	}
 	m.userNames = names
-	m.dirty()
+	m.InvalidateCache()
 }
 
 // PatchUserName records a display name resolved after SetUserNames and
-// bumps the version when a card shows that user (as author, last
-// replier, or a <@id> mention in the preview). The map is normally the
-// App's shared one, which already holds the name, so the bump is decided
-// by the cards rather than by a map change; unrelated names, which
-// resolve in bursts, cost no re-render.
+// re-renders when a card shows that user (as an author, a participant, or a
+// <@id> mention). The map is normally the App's shared one, which already
+// holds the name, so the bump is decided by the cards rather than by a map
+// change; unrelated names, which resolve in bursts, cost no re-render.
 func (m *Model) PatchUserName(userID, displayName string) {
 	if userID == "" {
 		return
@@ -162,13 +146,27 @@ func (m *Model) PatchUserName(userID, displayName string) {
 		m.userNames = map[string]string{}
 	}
 	m.userNames[userID] = displayName
-	mention := "<@" + userID
 	for _, s := range m.summaries {
-		if s.ParentUserID == userID || s.LastReplyBy == userID || strings.Contains(s.ParentText, mention) {
-			m.dirty()
+		if showsUser(s, userID) {
+			m.InvalidateCache()
 			return
 		}
 	}
+}
+
+// showsUser reports whether s's card names userID: as an author, a
+// participant, or a <@id> mention in the parent or a previewed reply.
+func showsUser(s core.ThreadSummary, userID string) bool {
+	mention := "<@" + userID
+	if s.ParentUserID == userID || s.LastReplyBy == userID || strings.Contains(s.ParentText, mention) {
+		return true
+	}
+	if slices.Contains(s.ParticipantIDs(), userID) {
+		return true
+	}
+	return slices.ContainsFunc(s.PreviewReplies(), func(r core.ThreadReply) bool {
+		return r.UserID == userID || strings.Contains(r.Text, mention)
+	})
 }
 
 // stringMapsEqual reports whether two map[string]string have identical
@@ -191,8 +189,10 @@ func stringMapsEqual(a, b map[string]string) bool {
 	return true
 }
 
-// SetChannelNames sets the channel ID -> name map used to resolve bare
-// <#CHANNELID> mentions. No-op when the new map matches the current one.
+// SetChannelNames sets the channel ID -> name map: bare <#CHANNELID>
+// mentions and the header of DM and group DM threads, whose cached
+// channel name is empty or Slack's raw mpdm form. No-op when the new map
+// matches the current one.
 func (m *Model) SetChannelNames(names map[string]string) {
 	if names == nil {
 		names = map[string]string{}
@@ -201,7 +201,7 @@ func (m *Model) SetChannelNames(names map[string]string) {
 		return
 	}
 	m.channelNames = names
-	m.dirty()
+	m.InvalidateCache()
 }
 
 // SetUserGroups sets the workspace-scoped usergroup ID -> handle map used
@@ -216,19 +216,58 @@ func (m *Model) SetUserGroups(groups map[string]string) {
 		copied = map[string]string{}
 	}
 	m.userGroups = copied
-	m.dirty()
+	m.InvalidateCache()
 }
 
-// SetSelfUserID updates the current user's ID. Used to render "me" labels.
+// SetSelfUserID updates the current user's ID, named "you" among the
+// participants.
 func (m *Model) SetSelfUserID(id string) {
 	if m.selfUserID != id {
 		m.selfUserID = id
-		m.dirty()
+		m.InvalidateCache()
 	}
 }
 
-// SetFocused marks whether the panel currently has keyboard focus. Stored
-// here so the App can query it; rendering does not currently use it.
+// SetAvatarFunc sets the avatar drawn beside each message; nil draws none.
+func (m *Model) SetAvatarFunc(fn messages.AvatarFunc) {
+	m.avatarFn = fn
+	m.InvalidateCache()
+}
+
+// HandleAvatarReady re-renders once a lazily fetched avatar lands.
+func (m *Model) HandleAvatarReady(userID string) {
+	if userID == "" || m.avatarFn == nil {
+		return
+	}
+	m.InvalidateCache()
+}
+
+// SetEmojiContext sets how emoji in message text render (images or glyphs).
+func (m *Model) SetEmojiContext(ctx messages.EmojiContext) {
+	m.emojiCtx = ctx
+	m.InvalidateCache()
+}
+
+// SetEmojiCustoms replaces only the workspace's custom emoji map.
+func (m *Model) SetEmojiCustoms(customs map[string]string) {
+	m.emojiCtx.Customs = customs
+	m.InvalidateCache()
+}
+
+// HandleEmojiImageReady re-renders once an emoji image lands.
+func (m *Model) HandleEmojiImageReady() { m.InvalidateCache() }
+
+// SetColoredUsernames colors each author's name by user ID, as the
+// message panes do with [appearance] colored_usernames.
+func (m *Model) SetColoredUsernames(on bool) {
+	if m.coloredUsernames != on {
+		m.coloredUsernames = on
+		m.InvalidateCache()
+	}
+}
+
+// SetFocused marks whether the panel currently has keyboard focus. The
+// selected card's border takes the focused selection colour.
 func (m *Model) SetFocused(f bool) {
 	if m.focused != f {
 		m.focused = f
@@ -257,7 +296,7 @@ func (m *Model) SetSubscriptionsAvailable(available bool) {
 //
 // Identical contents are a no-op (no version bump, no re-snap): the list
 // is reloaded on every thread reply and mark-read, usually unchanged, and
-// each bump forces a full re-render of the panel.
+// each bump forces a re-render of the panel.
 func (m *Model) SetSummaries(s []core.ThreadSummary) {
 	if slices.Equal(m.summaries, s) {
 		return
@@ -276,8 +315,29 @@ func (m *Model) SetSummaries(s []core.ThreadSummary) {
 	}
 	m.selected = newSel
 	m.clampSelection()
-	m.hasSnapped = false // force re-snap on next render
+	m.pruneCards()
+	m.topCard, m.topRow = min(m.topCard, max(len(s)-1, 0)), 0
+	m.hasSnapped = false
 	m.dirty()
+}
+
+// pruneCards drops rendered cards for threads no longer listed.
+func (m *Model) pruneCards() {
+	if m.cards == nil {
+		m.cards = map[threadKey]renderedCard{}
+	}
+	if len(m.cards) == 0 {
+		return
+	}
+	live := make(map[threadKey]bool, len(m.summaries))
+	for _, s := range m.summaries {
+		live[threadKey{s.ChannelID, s.ThreadTS}] = true
+	}
+	for k := range m.cards {
+		if !live[k] {
+			delete(m.cards, k)
+		}
+	}
 }
 
 // Summaries returns the current list of thread summaries.
@@ -316,7 +376,7 @@ func (m *Model) selectedKey() (string, string, bool) {
 	return s.ChannelID, s.ThreadTS, true
 }
 
-// MoveDown advances the cursor by one row, clamping at the bottom.
+// MoveDown advances the cursor by one card, clamping at the bottom.
 func (m *Model) MoveDown() {
 	if m.selected < len(m.summaries)-1 {
 		m.selected++
@@ -324,7 +384,7 @@ func (m *Model) MoveDown() {
 	}
 }
 
-// MoveUp moves the cursor up by one row, clamping at zero.
+// MoveUp moves the cursor up by one card, clamping at zero.
 func (m *Model) MoveUp() {
 	if m.selected > 0 {
 		m.selected--
@@ -332,7 +392,7 @@ func (m *Model) MoveUp() {
 	}
 }
 
-// GoToTop jumps to the first row.
+// GoToTop jumps to the first card.
 func (m *Model) GoToTop() {
 	if m.selected != 0 {
 		m.selected = 0
@@ -340,7 +400,7 @@ func (m *Model) GoToTop() {
 	}
 }
 
-// GoToBottom jumps to the last row.
+// GoToBottom jumps to the last card.
 func (m *Model) GoToBottom() {
 	if n := len(m.summaries); n > 0 && m.selected != n-1 {
 		m.selected = n - 1
@@ -348,32 +408,27 @@ func (m *Model) GoToBottom() {
 	}
 }
 
-// ScrollUp moves the viewport up n lines without changing the selection.
+// ScrollUp moves the viewport up n rows without changing the selection.
 // Marks the current selection as already-snapped so the next View() leaves
-// yOffset alone -- otherwise the snap would yank the viewport back to keep
-// the (unchanged) selection visible, undoing the scroll. The next selection
-// move (j/k/click) will re-snap naturally because snappedSelection != selected.
+// the viewport alone; the next selection move (j/k/click) re-snaps.
 func (m *Model) ScrollUp(n int) {
 	if n <= 0 {
 		return
 	}
-	m.yOffset -= n
-	if m.yOffset < 0 {
-		m.yOffset = 0
-	}
+	m.moveAnchor(-n)
 	m.snappedSelection = m.selected
 	m.hasSnapped = true
 	m.dirty()
 }
 
-// ScrollDown moves the viewport down n lines without changing the
-// selection. View() clamps yOffset against the actual content height.
-// Marks the current selection as already-snapped (see ScrollUp).
+// ScrollDown moves the viewport down n rows without changing the
+// selection. View() stops it at the end of the list. Marks the current
+// selection as already-snapped (see ScrollUp).
 func (m *Model) ScrollDown(n int) {
 	if n <= 0 {
 		return
 	}
-	m.yOffset += n
+	m.moveAnchor(n)
 	m.snappedSelection = m.selected
 	m.hasSnapped = true
 	m.dirty()
@@ -381,44 +436,20 @@ func (m *Model) ScrollDown(n int) {
 
 // ViewportAtTop reports whether the viewport is scrolled to the very top.
 func (m *Model) ViewportAtTop() bool {
-	return m.yOffset == 0 && len(m.summaries) > 0
+	return m.topCard == 0 && m.topRow == 0 && len(m.summaries) > 0
 }
 
-// ClickAt selects the thread card whose visual row contains rowY, where
-// rowY is the panel-local Y coordinate inside the bordered messages-pane
-// content area (i.e. paneY as returned by App.panelAt: top border already
-// stripped). Returns true when a card was selected and the caller should
-// follow up with the open-thread command; false for clicks on the
-// "Threads list unavailable" banner row, on inter-card separator rows,
-// on the blank-fill region past the last card, and for negative rowY.
-//
-// Layout reference: the body is rendered by renderLines which emits
-// cardContentLines (3) rows per card with one blank separator row between
-// adjacent cards — so cardStride is 4 and card i starts at absolute line
-// i*cardStride. When subscriptionsAvailable=false, View prepends a single
-// banner row above the body, so rowY=0 is the banner and the body starts
-// at rowY=1. yOffset is added to rowY (after banner adjustment) to map
-// from viewport coordinates to absolute line index.
+// ClickAt selects the thread card drawn on panel row rowY of the last
+// frame (paneY as returned by App.panelAt: top border already stripped).
+// Returns true when a card was selected and the caller should follow up
+// with the open-thread command; false for the title, the banner, the
+// spacer rows between cards, the filler past the last card, and rows
+// outside the frame.
 func (m *Model) ClickAt(rowY int) bool {
-	if rowY < 0 {
+	if rowY < 0 || rowY >= len(m.rowCards) {
 		return false
 	}
-	bodyY := rowY
-	if !m.subscriptionsAvailable {
-		if bodyY == 0 {
-			return false // banner row
-		}
-		bodyY--
-	}
-	absLine := m.yOffset + bodyY
-	if absLine < 0 {
-		return false
-	}
-	// Inter-card separator rows have absLine % cardStride == cardContentLines.
-	if absLine%cardStride >= cardContentLines {
-		return false
-	}
-	idx := absLine / cardStride
+	idx := m.rowCards[rowY]
 	if idx < 0 || idx >= len(m.summaries) {
 		return false
 	}
@@ -519,6 +550,7 @@ func (m *Model) UnreadCount() int {
 	return n
 }
 
+// clampSelection keeps the cursor on a listed card.
 func (m *Model) clampSelection() {
 	if m.selected < 0 {
 		m.selected = 0
@@ -534,305 +566,213 @@ func (m *Model) clampSelection() {
 // `width` columns wide. Argument order matches sidebar.View and
 // thread.View (height first).
 func (m *Model) View(height, width int) string {
-	if width < 1 {
-		width = 1
+	width = max(width, 1)
+	height = max(height, 1)
+	if width != m.width {
+		m.topRow = 0
 	}
-	if height < 1 {
-		height = 1
+	m.width = width
+
+	var rows []string
+	m.rowCards = m.rowCards[:0]
+	add := func(line string, card int) {
+		rows = append(rows, line)
+		m.rowCards = append(m.rowCards, card)
 	}
 
-	// Reserve one line for the banner when subscriptions are
-	// unavailable. The banner is muted-style, truncated to width if
-	// needed.
-	var bannerLine string
-	bodyHeight := height
 	if !m.subscriptionsAvailable {
-		bannerText := "Threads list unavailable — Slack subscription state could not be fetched. slk will retry on the next reconnect."
-		if w := lipgloss.Width(bannerText); w > width {
-			// Truncate to width.
-			runes := []rune(bannerText)
-			for i := range runes {
-				if lipgloss.Width(string(runes[:i+1])) > width {
-					bannerText = string(runes[:i])
-					break
-				}
-			}
-		}
-		bannerLine = mutedStyle().Render(bannerText)
-		// Pad to full width so the next line starts cleanly.
-		if pad := width - lipgloss.Width(bannerLine); pad > 0 {
-			bannerLine += strings.Repeat(" ", pad)
-		}
-		bodyHeight = height - 1
-		if bodyHeight < 0 {
-			bodyHeight = 0
-		}
+		add(m.banner(width), -1)
 	}
+	add(m.title(width), -1)
+	add(blankLine(width), -1)
 
-	// Body: the empty-state placeholder or the rendered rows. Mirror
-	// the existing logic but render into bodyHeight, then prepend the
-	// banner.
-	var body string
+	bodyHeight := max(height-len(rows), 0)
 	if len(m.summaries) == 0 {
-		empty := mutedStyle().Render("no threads")
-		body = lipgloss.Place(width, bodyHeight, lipgloss.Center, lipgloss.Center, empty)
-	} else {
-		// Every card is cardContentLines tall with a separator between
-		// cards, so the scroll math needs only the line count; render
-		// just the cards in the viewport. The list can hold ~1000
-		// threads, and rendering all of them made each View ~300ms.
-		totalLines := len(m.summaries)*cardStride - 1
-		if !m.hasSnapped || m.snappedSelection != m.selected {
-			m.snapToSelected(bodyHeight, totalLines)
-			m.snappedSelection = m.selected
-			m.hasSnapped = true
-		}
-		maxOffset := totalLines - bodyHeight
-		if maxOffset < 0 {
-			maxOffset = 0
-		}
-		if m.yOffset > maxOffset {
-			m.yOffset = maxOffset
-		}
-		if m.yOffset < 0 {
-			m.yOffset = 0
-		}
-		end := m.yOffset + bodyHeight
-		if end > totalLines {
-			end = totalLines
-		}
-		visible := m.renderLines(m.yOffset, end, width)
-		if pad := bodyHeight - len(visible); pad > 0 {
-			filler := blankLine(width)
-			out := make([]string, 0, bodyHeight)
-			out = append(out, visible...)
-			for i := 0; i < pad; i++ {
-				out = append(out, filler)
-			}
-			visible = out
-		}
-		body = strings.Join(visible, "\n")
-	}
-
-	if bannerLine == "" {
-		return body
-	}
-	if bodyHeight == 0 {
-		return bannerLine
-	}
-	return bannerLine + "\n" + body
-}
-
-// snapToSelected adjusts yOffset so the entire selected card (3 content
-// lines) is inside the viewport. The selected card occupies absolute lines
-// [start, start+cardContentLines) inside the flat line list. If the card
-// is taller than `height`, prefer pinning its top edge to the viewport top.
-func (m *Model) snapToSelected(height, totalLines int) {
-	start := m.selected * cardStride
-	end := start + cardContentLines
-
-	if end > m.yOffset+height {
-		m.yOffset = end - height
-	}
-	if start < m.yOffset {
-		m.yOffset = start
-	}
-	if m.yOffset < 0 {
-		m.yOffset = 0
-	}
-	maxOffset := totalLines - height
-	if maxOffset < 0 {
-		maxOffset = 0
-	}
-	if m.yOffset > maxOffset {
-		m.yOffset = maxOffset
-	}
-}
-
-// renderLines returns lines [start, end) of the flat line list for the
-// current summaries -- cards with one width-padded blank separator
-// between them -- rendering only the cards that overlap that range.
-// All emitted lines are exactly `width` columns wide.
-func (m *Model) renderLines(start, end, width int) []string {
-	if end <= start {
-		return nil
-	}
-	out := make([]string, 0, end-start)
-	var separator string
-	for i := start / cardStride; i < len(m.summaries) && i*cardStride < end; i++ {
-		base := i * cardStride
-		for j, line := range m.renderCard(m.summaries[i], width, i == m.selected) {
-			if abs := base + j; abs >= start && abs < end {
-				out = append(out, line)
+		empty := lipgloss.NewStyle().Foreground(styles.TextMuted).Background(styles.Background).Render("No threads yet")
+		if bodyHeight > 0 {
+			for _, l := range strings.Split(lipgloss.Place(width, bodyHeight, lipgloss.Center, lipgloss.Center, empty), "\n") {
+				add(l, -1)
 			}
 		}
-		if sep := base + cardContentLines; i < len(m.summaries)-1 && sep >= start && sep < end {
-			if separator == "" {
-				separator = blankLine(width)
+		return m.frame(rows, height)
+	}
+
+	if !m.hasSnapped || m.snappedSelection != m.selected {
+		m.snapToSelected(bodyHeight)
+		m.snappedSelection = m.selected
+		m.hasSnapped = true
+	}
+	m.clampAnchor(bodyHeight)
+
+	for i, row := m.topCard, m.topRow; i < len(m.summaries) && len(rows) < height; i, row = i+1, 0 {
+		c := m.card(i)
+		for _, fl := range c.flushes {
+			_ = fl(imgpkg.KittyOutput)
+		}
+		content := cardContentRows(c)
+		for ; row < len(c.lines) && len(rows) < height; row++ {
+			owner := i
+			if row >= content {
+				owner = -1
 			}
-			out = append(out, separator)
+			add(c.lines[row], owner)
 		}
 	}
-	return out
+	for len(rows) < height {
+		add(blankLine(width), -1)
+	}
+	return m.frame(rows, height)
 }
 
-// blankLine returns an exactly `width`-column-wide empty line, used both
-// for inter-card separators and bottom padding when the content is shorter
-// than the viewport.
+// frame joins rows cut to the pane's height; a pane shorter than the
+// chrome above the list loses the rows that do not fit.
+func (m *Model) frame(rows []string, height int) string {
+	n := min(len(rows), height)
+	m.rowCards = m.rowCards[:n]
+	return strings.Join(rows[:n], "\n")
+}
+
+// banner is the "Threads list unavailable" row, clipped to width.
+func (m *Model) banner(width int) string {
+	text := "Threads list unavailable — Slack subscription state could not be fetched. slk will retry on the next reconnect."
+	return lipgloss.NewStyle().Foreground(styles.TextMuted).Background(styles.Background).
+		Width(width).MaxWidth(width).Render(clipToWidth(text, width))
+}
+
+// title is the "Threads" heading over the list, as in Slack.
+func (m *Model) title(width int) string {
+	t := lipgloss.NewStyle().Foreground(styles.TextPrimary).Background(styles.Background).Bold(true).Render("Threads")
+	if n := m.UnreadCount(); n > 0 {
+		t += lipgloss.NewStyle().Foreground(styles.TextMuted).Background(styles.Background).Render("  ·  " + pluralize(n, "unread thread", "unread threads"))
+	}
+	return lipgloss.NewStyle().Background(styles.Background).Width(width).Render(clipToWidth(" "+t, width))
+}
+
+// card returns card i rendered at the current width, from the cache when
+// nothing it depends on has changed.
+func (m *Model) card(i int) renderedCard {
+	s := m.summaries[i]
+	selected := i == m.selected
+	key := cardKey{
+		summary:  s,
+		width:    m.width,
+		selected: selected,
+		focused:  selected && m.focused,
+		last:     i == len(m.summaries)-1,
+		gen:      m.gen,
+		theme:    styles.Version(),
+	}
+	tk := threadKey{s.ChannelID, s.ThreadTS}
+	if c, ok := m.cards[tk]; ok && c.key == key {
+		return c
+	}
+	lines, flushes := m.renderCard(s, m.width, selected)
+	if !key.last {
+		lines = append(lines, blankLine(m.width))
+	}
+	c := renderedCard{key: key, lines: lines, flushes: flushes}
+	if m.cards == nil {
+		m.cards = map[threadKey]renderedCard{}
+	}
+	m.cards[tk] = c
+	return c
+}
+
+// cardHeight is the number of rows card i occupies, spacer included.
+func (m *Model) cardHeight(i int) int { return len(m.card(i).lines) }
+
+// cardContentRows is the number of a card's rows that are the card itself
+// rather than the spacer after it.
+func cardContentRows(c renderedCard) int {
+	if c.key.last {
+		return len(c.lines)
+	}
+	return len(c.lines) - 1
+}
+
+// snapToSelected moves the viewport the least distance that shows the
+// whole selected card, or its top when it is taller than the viewport.
+func (m *Model) snapToSelected(height int) {
+	sel := m.selected
+	if sel < m.topCard || (sel == m.topCard && m.topRow > 0) {
+		m.topCard, m.topRow = sel, 0
+		return
+	}
+	selRows := cardContentRows(m.card(sel))
+	bottom := -m.topRow
+	for i := m.topCard; i < sel && bottom <= height; i++ {
+		bottom += m.cardHeight(i)
+	}
+	if bottom+selRows <= height {
+		return
+	}
+	m.topCard, m.topRow = sel, 0
+	if selRows >= height {
+		return
+	}
+	m.moveAnchor(-(height - selRows))
+}
+
+// clampAnchor keeps the anchor on a listed card and stops the viewport
+// at the end of the list, so a scroll never leaves blank rows below the
+// last card while there are cards above the top to show instead.
+func (m *Model) clampAnchor(height int) {
+	n := len(m.summaries)
+	if m.topCard >= n {
+		m.topCard, m.topRow = max(n-1, 0), 0
+	}
+	if m.topCard < 0 {
+		m.topCard, m.topRow = 0, 0
+	}
+	m.topRow = min(max(m.topRow, 0), max(m.cardHeight(m.topCard)-1, 0))
+	shown := -m.topRow
+	for i := m.topCard; i < n && shown < height; i++ {
+		shown += m.cardHeight(i)
+	}
+	if shown < height {
+		m.moveAnchor(-(height - shown))
+	}
+}
+
+// moveAnchor scrolls the anchor by delta rows (negative is up), stopping
+// at the first row of the first card and the last row of the last card.
+func (m *Model) moveAnchor(delta int) {
+	n := len(m.summaries)
+	if n == 0 || m.width <= 0 {
+		return
+	}
+	for delta > 0 {
+		rest := m.cardHeight(m.topCard) - m.topRow
+		switch {
+		case delta < rest:
+			m.topRow += delta
+			delta = 0
+		case m.topCard < n-1:
+			delta -= rest
+			m.topCard, m.topRow = m.topCard+1, 0
+		default:
+			m.topRow = max(rest+m.topRow-1, 0)
+			delta = 0
+		}
+	}
+	for delta < 0 {
+		switch {
+		case -delta <= m.topRow:
+			m.topRow += delta
+			delta = 0
+		case m.topCard > 0:
+			delta += m.topRow
+			m.topCard--
+			m.topRow = m.cardHeight(m.topCard)
+		default:
+			m.topRow = 0
+			delta = 0
+		}
+	}
+}
+
+// blankLine returns an exactly `width`-column-wide empty line, used for
+// spacer and filler rows.
 func blankLine(width int) string {
-	return lipgloss.NewStyle().Width(width).Render("")
-}
-
-// renderCard returns the 3 lines of a single thread row: header, preview,
-// footer. Selection is indicated by a green left border (▌) — the same
-// mechanism used for messages and thread replies. Non-selected rows
-// reserve the same 1-column gutter with a background-colored (invisible)
-// border so column alignment is uniform.
-func (m *Model) renderCard(s core.ThreadSummary, width int, selected bool) []string {
-	// The left border occupies 1 column; content fills the remainder.
-	contentWidth := width - 1
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
-
-	// Header: <glyph><channel> · <author> · <relTime>  [• if unread]
-	glyph := channelGlyph(s.ChannelType)
-	author := m.resolveUser(s.ParentUserID)
-	relTime := formatRelTime(s.ParentTS)
-	header := glyph + channelNameStyle().Render(s.ChannelName) + "  " + mutedStyle().Render("·") + "  " + author + "  " + mutedStyle().Render("· "+relTime)
-	if s.Unread {
-		header += "  " + unreadDotStyle().Render("●")
-	}
-	header = clipToWidth(header, contentWidth)
-
-	// Preview: "  > <parent text>"; falls back to "(parent not loaded)"
-	// when both ParentText and ParentUserID are empty (cache hasn't seen
-	// the parent yet).
-	var previewBody string
-	if s.ParentText == "" && s.ParentUserID == "" {
-		previewBody = mutedStyle().Render("(parent not loaded)")
-	} else {
-		preview := messages.RenderSlackMarkdownWith(s.ParentText, messages.RenderSlackMarkdownOpts{
-			UserNames:    m.userNames,
-			ChannelNames: m.channelNames,
-			UserGroups:   m.userGroups,
-		})
-		preview = strings.ReplaceAll(preview, "\n", " ")
-		previewMax := contentWidth - 4
-		if previewMax < 0 {
-			previewMax = 0
-		}
-		previewBody = truncate.StringWithTail(preview, uint(previewMax), "…")
-	}
-	previewLine := clipToWidth("  > "+previewBody, contentWidth)
-
-	// Footer: "  N replies · last by <user> <relTime>".
-	replyWord := "replies"
-	if s.ReplyCount == 1 {
-		replyWord = "reply"
-	}
-	lastBy := m.resolveUser(s.LastReplyBy)
-	footerText := "  " + strconv.Itoa(s.ReplyCount) + " " + replyWord + " · last by " + lastBy + " " + formatRelTime(s.LastReplyTS)
-	footerText = clipToWidth(footerText, contentWidth)
-
-	// Pick border + fill (themed Background for unselected; tinted
-	// SelectionTintColor for selected so trailing whitespace carries
-	// the tint to the right edge — same per-variant fill pattern used
-	// in internal/ui/messages/model.go).
-	borderStyle := borderInvisStyle()
-	fill := borderFillStyle().Width(contentWidth)
-	if selected {
-		borderStyle = borderSelectStyle(m.focused)
-		fill = lipgloss.NewStyle().
-			Background(styles.SelectionTintColor(m.focused)).
-			Width(contentWidth)
-	}
-
-	if selected && styles.TransparentBackground() {
-		// With the transparent background a reset drops the row to the
-		// default background, a hole in the tint. Swap the renderer's
-		// background escapes for the tint and put the tint back after
-		// every reset. The opaque card has the same gap (theme
-		// background), left as it is so the off path stays unchanged.
-		tint := messages.SelectionTintBgANSI(m.focused)
-		header = messages.ReapplyBgAfterResets(header, tint)
-		previewLine = messages.RepaintBgToSelectionTint(previewLine, m.focused)
-	}
-	headerOut := borderStyle.Render(fill.Render(header))
-	previewOut := borderStyle.Render(fill.Render(previewLine))
-	footerOut := borderStyle.Render(fill.Foreground(styles.TextMuted).Render(footerText))
-
-	return []string{headerOut, previewOut, footerOut}
-}
-
-// channelGlyph returns the leading glyph for a channel row, matching the
-// sidebar's conventions: "#" for public channels, "◆ " for private channels,
-// "● " for DMs and group DMs.
-func channelGlyph(channelType string) string {
-	switch channelType {
-	case "private":
-		return lipgloss.NewStyle().Foreground(styles.Warning).Render("◆ ")
-	case "dm", "group_dm":
-		return lipgloss.NewStyle().Foreground(styles.TextMuted).Render("● ")
-	default:
-		return "# "
-	}
-}
-
-// resolveUser maps a Slack user ID to a display label: "me" for the current
-// user, the cached display name when known, and the raw ID otherwise.
-func (m *Model) resolveUser(uid string) string {
-	if uid == "" {
-		return ""
-	}
-	if uid == m.selfUserID {
-		return "me"
-	}
-	if name, ok := m.userNames[uid]; ok && name != "" {
-		return name
-	}
-	return uid
-}
-
-// formatRelTime parses a Slack-style "1700000000.000000" timestamp and
-// returns a coarse "Nm ago" / "Nh ago" / "Nd ago" string. Empty / unparseable
-// inputs return "".
-func formatRelTime(ts string) string {
-	if ts == "" {
-		return ""
-	}
-	secStr := ts
-	if dot := strings.IndexByte(ts, '.'); dot >= 0 {
-		secStr = ts[:dot]
-	}
-	sec, err := strconv.ParseInt(secStr, 10, 64)
-	if err != nil {
-		return ""
-	}
-	d := time.Since(time.Unix(sec, 0))
-	switch {
-	case d < time.Minute:
-		return "now"
-	case d < time.Hour:
-		return strconv.Itoa(int(d/time.Minute)) + "m ago"
-	case d < 24*time.Hour:
-		return strconv.Itoa(int(d/time.Hour)) + "h ago"
-	default:
-		return strconv.Itoa(int(d/(24*time.Hour))) + "d ago"
-	}
-}
-
-// clipToWidth truncates an already-styled string to at most `width` display
-// columns (using a trailing ellipsis), but does NOT pad short strings.
-// Padding is left to the caller's width-bounded style.Render so background
-// fills correctly. lipgloss.Width measures display columns even with
-// embedded ANSI escapes.
-func clipToWidth(s string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	if lipgloss.Width(s) <= width {
-		return s
-	}
-	return truncate.StringWithTail(s, uint(width), "…")
+	return lipgloss.NewStyle().Background(styles.Background).Width(width).Render("")
 }

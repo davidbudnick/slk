@@ -20,6 +20,18 @@ func timeFromTS(ts string) (time.Time, bool) {
 	return time.Unix(sec, 0), true
 }
 
+// ClockFromTS formats a Slack ts as the clock message headers show
+// ([appearance] timestamp_format, as SetDateTokenTimeLayout seeded it),
+// for a surface that has a ts but no pre-formatted MessageItem.Timestamp.
+// Returns "" when ts is unparseable.
+func ClockFromTS(ts string) string {
+	t, ok := timeFromTS(ts)
+	if !ok {
+		return ""
+	}
+	return t.Format(dateTokenTimeLayout)
+}
+
 // LongTimestamp returns short prefixed with the message's local date
 // ("Tue Sep 29, " or "Mon Sep 29 2025, " when not the current year).
 // Returns short unchanged when ts is unparseable or short is empty.

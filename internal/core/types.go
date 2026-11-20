@@ -198,9 +198,27 @@ type ReadState struct {
 	MentionCount int
 }
 
+// ThreadPreviewReplies is how many trailing replies a ThreadSummary
+// carries for the Threads view, as Slack shows under each thread.
+const ThreadPreviewReplies = 2
+
+// ThreadPreviewParticipants caps the authors a ThreadSummary names: the
+// parent's plus Slack's reply_users, which holds at most five.
+const ThreadPreviewParticipants = 6
+
+// ThreadReply is one reply previewed under its thread in the Threads view.
+type ThreadReply struct {
+	UserID string
+	Text   string
+	TS     string
+}
+
 // ThreadSummary is one row in the Threads view: a thread the user is
 // involved in (authored, replied to, or @-mentioned in). Computed from
 // the local cache; v1 has no Slack-side authoritative data.
+//
+// It stays comparable (arrays, not slices): the Threads view compares
+// summaries to skip reloads that changed nothing.
 type ThreadSummary struct {
 	ChannelID    string
 	ChannelName  string
@@ -209,10 +227,37 @@ type ThreadSummary struct {
 	ParentUserID string
 	ParentText   string
 	ParentTS     string
-	ReplyCount   int // number of replies (does not count the parent)
-	LastReplyTS  string
-	LastReplyBy  string
-	Unread       bool
+	// ReplyCount is the number of replies (not counting the parent):
+	// the larger of Slack's reply_count on the parent and the replies
+	// cached locally, so a thread never opened still reports its size.
+	ReplyCount  int
+	LastReplyTS string
+	LastReplyBy string
+	Unread      bool
+	// Replies are the newest cached replies, oldest first, packed to
+	// the front; a zero TS ends the list.
+	Replies [ThreadPreviewReplies]ThreadReply
+	// Participants are the thread's distinct authors, the parent's
+	// first, packed to the front; "" ends the list.
+	Participants [ThreadPreviewParticipants]string
+}
+
+// PreviewReplies returns the replies the summary carries, oldest first.
+func (s ThreadSummary) PreviewReplies() []ThreadReply {
+	n := 0
+	for n < len(s.Replies) && s.Replies[n].TS != "" {
+		n++
+	}
+	return s.Replies[:n]
+}
+
+// ParticipantIDs returns the authors the summary names, the parent's first.
+func (s ThreadSummary) ParticipantIDs() []string {
+	n := 0
+	for n < len(s.Participants) && s.Participants[n] != "" {
+		n++
+	}
+	return s.Participants[:n]
 }
 
 // ActivityItem is a flattened, UI-friendly representation of a single
