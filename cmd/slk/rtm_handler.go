@@ -391,6 +391,16 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
 	// Nor does a suppressed author's message: the user asked not to
 	// see it, so it must not draw them to the channel either.
 	shouldMarkChannel := channelEligible && !isSelfMessage && !changed && !hidden && !core.IsSystemNoticeSubtype(subtype)
+	// Any message that lands in the conversation, yours included, is
+	// now its newest. The sidebar orders direct messages by that.
+	latestMoved := false
+	if h.db != nil && channelEligible && !changed && !hidden && !core.IsSystemNoticeSubtype(subtype) {
+		moved, err := h.db.AdvanceChannelLatest(channelID, ts)
+		if err != nil {
+			log.Printf("Warning: failed to advance latest_ts for %s: %v", channelID, err)
+		}
+		latestMoved = moved
+	}
 	if h.db != nil && shouldMarkChannel {
 		if err := h.db.UpdateChannelReadState(channelID, "", true); err != nil {
 			log.Printf("Warning: failed to set has_unread for %s: %v", channelID, err)
@@ -498,12 +508,28 @@ func (h *rtmEventHandler) OnMessage(channelID, userID, ts, text, threadTS, subty
 		// on a grid this may be the only handler whose copy of the
 		// frame survived the dedupe, so the rail dots refresh from
 		// here - once, for the same reason as the inactive arm above.
-		if onGrid := h.gridSiblings != nil && len(h.gridSiblings()) > 1; onGrid {
+		// A direct message that became its conversation's newest also
+		// sends one: the sidebar re-sorts those rows on it, and your
+		// own message reaches no other read-state refresh.
+		onGrid := h.gridSiblings != nil && len(h.gridSiblings()) > 1
+		if onGrid || (latestMoved && sidebarOrdersByLatest(h.channelTypes[channelID])) {
 			h.program.Send(ui.ReadStateChangedMsg{
 				WorkspaceID: h.workspaceID,
 				ChannelID:   channelID,
 			})
 		}
+	}
+}
+
+// sidebarOrdersByLatest reports whether the sidebar may order a
+// conversation of this type by its newest message: the direct ones,
+// which Slack lists most recent first.
+func sidebarOrdersByLatest(chType string) bool {
+	switch chType {
+	case "dm", "group_dm", "app":
+		return true
+	default:
+		return false
 	}
 }
 

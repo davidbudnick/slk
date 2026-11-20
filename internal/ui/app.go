@@ -3817,6 +3817,7 @@ func (a *App) SetCurrentUserID(userID string) {
 	a.currentUserID = userID
 	a.threadsView.SetSelfUserID(userID)
 	a.activityView.SetSelfUserID(userID)
+	a.sidebar.SetSelfUserID(userID)
 	for _, m := range a.allWinModels() {
 		m.SetCurrentUser(userID)
 	}

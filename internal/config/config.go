@@ -226,7 +226,9 @@ type Sidebar struct {
 	// SlackStyle draws the sidebar as Slack does: headers start at
 	// their emoji with no "▾" (a collapsed one ends in "▸"),
 	// regular-weight headers, no unread dot, names sorted ignoring
-	// punctuation, and the open conversation's row filled. Default off.
+	// punctuation, the open conversation's row filled, and direct
+	// messages and apps listed unread first, then newest message
+	// first. Default off.
 	SlackStyle bool `toml:"slack_style"`
 	// PrivateGlyph replaces "◆" before private channels (e.g. a lock).
 	PrivateGlyph string `toml:"private_glyph"`

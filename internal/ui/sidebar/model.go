@@ -120,6 +120,12 @@ func (item ChannelItem) MentionBadge(state core.ReadState) int {
 	return state.MentionCount
 }
 
+// wantsAttention reports whether the row is drawn as unread: bold, or
+// with a mention badge. Slack lists such direct messages first.
+func (item ChannelItem) wantsAttention(state core.ReadState) bool {
+	return item.IsVisiblyUnread(state) || item.MentionBadge(state) > 0
+}
+
 // sectionFor is the package-level back-compat shim for callers
 // (including tests) that don't have a *Model. It always uses
 // config-mode logic. The Slack-mode dispatcher is *Model.sectionFor.
@@ -324,6 +330,9 @@ type Model struct {
 	// avatarFn draws DM and app avatars in place of their glyphs
 	// ([sidebar] avatars); nil keeps the glyphs.
 	avatarFn AvatarFunc
+	// selfUserID is the user's own ID, for telling their DM with
+	// themselves from the others.
+	selfUserID string
 	// activeOnly hides conversations inactive for activeOnlyWindow in
 	// every section, like Slack's "Active only" ([sidebar] active_only).
 	activeOnly bool
@@ -614,11 +623,17 @@ func (m *Model) NextUnread(afterID string, dir int) (id, name, chType string, ok
 // stayed hidden after that message made it unread. The reveal only adds
 // rows: an item that has gone stale stays put until the next full
 // rebuild, rather than vanishing from under the cursor.
+//
+// In Slack style the rows of the direct-message sections are ordered by
+// read state, so they are sorted again whatever was revealed.
 func (m *Model) Invalidate() {
-	if m.readStateReader != nil && len(m.filtered) < len(m.items) {
+	hidden := len(m.filtered) < len(m.items)
+	if m.readStateReader != nil && (hidden || m.slackStyle) {
 		key, hadKey := m.currentCursorKey()
-		if m.revealUnreadHidden(m.readStateReader()) {
-			m.sortFiltered()
+		state := m.readStateReader()
+		revealed := hidden && m.revealUnreadHidden(state)
+		if revealed || m.slackStyle {
+			m.sortFiltered(state)
 			m.rebuildNavWithCursor(key, hadKey)
 		}
 	}
@@ -849,7 +864,8 @@ const maxChannelIndent = 6
 // SetSlackStyle turns on Slack's sidebar look: headers start at their
 // emoji with no "▾" (a collapsed one ends in "▸"), regular-weight
 // headers, no unread dot (bold is enough), names sorted ignoring
-// punctuation, and the open conversation's row filled.
+// punctuation, the open conversation's row filled, and direct messages
+// and apps listed unread first, then newest message first.
 func (m *Model) SetSlackStyle(enabled bool) {
 	m.slackStyle = enabled
 	m.refilter()
@@ -1773,11 +1789,45 @@ func (m *Model) rebuildFilter() {
 		}
 		m.filtered = append(m.filtered, i)
 	}
-	m.sortFiltered()
+	m.sortFiltered(readState)
+}
+
+// recentSections returns the sections Slack lists most recent first with
+// the unread ones on top: its direct messages and its apps. Nil outside
+// Slack style, where every section is alphabetical.
+func (m *Model) recentSections() map[string]bool {
+	if !m.slackStyle {
+		return nil
+	}
+	recent := map[string]bool{defaultDMSection: true, defaultAppsSection: true}
+	if m.useSlackSections() {
+		for _, sec := range m.sectionsProvider.OrderedSlackSections() {
+			if sec.Type == "direct_messages" || sec.Type == "recent_apps" {
+				recent[sec.ID] = true
+			}
+		}
+	}
+	return recent
+}
+
+// SetSelfUserID names the user, whose DM with themselves Slack lists
+// last among the direct messages.
+func (m *Model) SetSelfUserID(id string) {
+	if m.selfUserID == id {
+		return
+	}
+	m.selfUserID = id
+	m.refilter()
+}
+
+// isSelfDM reports whether item is the user's DM with themselves.
+func (m *Model) isSelfDM(item ChannelItem) bool {
+	return m.selfUserID != "" && item.Type == "dm" && item.DMUserID == m.selfUserID
 }
 
 // sortFiltered sorts m.filtered into the order the sidebar renders.
-func (m *Model) sortFiltered() {
+// readState is what orders the rows of recentSections.
+func (m *Model) sortFiltered(readState map[string]core.ReadState) {
 	// Sort filtered indices to match the visual section display order so that
 	// j/k navigation traverses items in the same order they're rendered.
 	// Within the real Slack stars section, channels form one block before
@@ -1786,6 +1836,10 @@ func (m *Model) sortFiltered() {
 	//      (from SectionDef "<pattern>:<N>" suffixes; config-mode only).
 	//   2. Channels with equal ChannelOrder sort alphabetically by name.
 	//      Section order is preserved; unread status does not affect sorting.
+	// The exception is Slack style's direct-message and app sections
+	// (recentSections): unread conversations first, then the one with the
+	// newest message, and the user's DM with themselves last, as Slack
+	// lists them.
 	// Snapshot star identities once per rebuild, not inside the comparator.
 	// Names are presentation only: a custom section named Starred is ordinary.
 	stars := make(map[string]bool)
@@ -1801,12 +1855,25 @@ func (m *Model) sortFiltered() {
 	for i, name := range sectionOrder {
 		rank[name] = i
 	}
+	recent := m.recentSections()
 	sort.SliceStable(m.filtered, func(a, b int) bool {
 		ia, ib := m.filtered[a], m.filtered[b]
 		sa, sb := m.sectionFor(m.items[ia]), m.sectionFor(m.items[ib])
 		ra, rb := rank[sa], rank[sb]
 		if ra != rb {
 			return ra < rb
+		}
+		if recent[sa] {
+			if selfA, selfB := m.isSelfDM(m.items[ia]), m.isSelfDM(m.items[ib]); selfA != selfB {
+				return selfB
+			}
+			stateA, stateB := readState[m.items[ia].ID], readState[m.items[ib].ID]
+			if ua, ub := m.items[ia].wantsAttention(stateA), m.items[ib].wantsAttention(stateB); ua != ub {
+				return ua
+			}
+			if stateA.LatestTS != stateB.LatestTS {
+				return stateA.LatestTS > stateB.LatestTS
+			}
 		}
 		if sa == sb && stars[sa] {
 			ca := m.items[ia].Type == "channel" || m.items[ia].Type == "private"
