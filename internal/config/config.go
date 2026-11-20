@@ -225,8 +225,8 @@ type Sidebar struct {
 	ChannelIndent int `toml:"channel_indent"`
 	// SlackStyle draws the sidebar as Slack does: headers start at
 	// their emoji with no "▾" (a collapsed one ends in "▸"),
-	// regular-weight headers, no unread dot, and names sorted ignoring
-	// punctuation. Default off.
+	// regular-weight headers, no unread dot, names sorted ignoring
+	// punctuation, and the open conversation's row filled. Default off.
 	SlackStyle bool `toml:"slack_style"`
 	// PrivateGlyph replaces "◆" before private channels (e.g. a lock).
 	PrivateGlyph string `toml:"private_glyph"`

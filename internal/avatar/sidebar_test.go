@@ -24,18 +24,24 @@ func solidAvatar(size int, c imgcolor.Color) image.Image {
 	return img
 }
 
-func TestWithBadge_DotSitsInATransparentGap(t *testing.T) {
+func TestSidebarIcon_InsetRoundedAvatarWithItsDotInAGap(t *testing.T) {
 	red := imgcolor.NRGBA{R: 200, A: 255}
 	green := imgcolor.NRGBA{G: 200, A: 255}
-	centre := int(badgeCanvas - badgeRadius)
+	centre := int(iconCanvas - badgeRadius - badgeEdgeSpace)
 	inGap := centre - int(badgeRadius) - int(badgeGap)/2
 
-	filled := withBadge(solidAvatar(72, red), green, false).(*image.NRGBA)
-	if got := filled.Bounds().Size(); got != image.Pt(badgeCanvas, badgeCanvas) {
-		t.Fatalf("canvas is %v, want %d square", got, badgeCanvas)
+	filled := sidebarIcon(solidAvatar(72, red), green, false).(*image.NRGBA)
+	if got := filled.Bounds().Size(); got != image.Pt(iconCanvas, iconCanvas) {
+		t.Fatalf("canvas is %v, want %d square", got, iconCanvas)
 	}
-	if got := filled.NRGBAAt(4, 4); got != red {
-		t.Errorf("avatar corner = %v, want the avatar's own %v", got, red)
+	if got := filled.NRGBAAt(iconCanvas/2, iconCanvas/3); got != red {
+		t.Errorf("avatar = %v, want the avatar's own %v", got, red)
+	}
+	if got := filled.NRGBAAt(iconCanvas/2, 2); got.A != 0 {
+		t.Errorf("margin above the avatar = %v, want transparent so stacked avatars do not touch", got)
+	}
+	if got := filled.NRGBAAt(int(iconInset)+1, int(iconInset)+1); got.A != 0 {
+		t.Errorf("avatar corner = %v, want it rounded off", got)
 	}
 	if got := filled.NRGBAAt(centre, centre); got != green {
 		t.Errorf("dot centre = %v, want %v", got, green)
@@ -44,16 +50,21 @@ func TestWithBadge_DotSitsInATransparentGap(t *testing.T) {
 		t.Errorf("gap beside the dot = %v, want transparent", got)
 	}
 
-	hollow := withBadge(solidAvatar(72, red), green, true).(*image.NRGBA)
+	hollow := sidebarIcon(solidAvatar(72, red), green, true).(*image.NRGBA)
 	if got := hollow.NRGBAAt(centre, centre); got.A != 0 {
-		t.Errorf("hollow badge centre = %v, want transparent", got)
+		t.Errorf("hollow dot centre = %v, want transparent", got)
 	}
 	if got := hollow.NRGBAAt(centre-int(badgeRadius)+2, centre); got != green {
-		t.Errorf("hollow badge line = %v, want %v", got, green)
+		t.Errorf("hollow dot line = %v, want %v", got, green)
+	}
+
+	plain := sidebarIcon(solidAvatar(72, red), nil, false).(*image.NRGBA)
+	if got := plain.NRGBAAt(centre-int(badgeRadius), centre-int(badgeRadius)); got != red {
+		t.Errorf("with no dot the avatar's corner area = %v, want the avatar", got)
 	}
 }
 
-func TestGetSmallBadged_OneImagePerBadge(t *testing.T) {
+func TestGetSidebar_OneImagePerPresence(t *testing.T) {
 	t.Setenv("TMUX", "")
 	var buf bytes.Buffer
 	imgpng.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 32, 32)))
@@ -74,29 +85,31 @@ func TestGetSmallBadged_OneImagePerBadge(t *testing.T) {
 
 	green := imgcolor.NRGBA{G: 200, A: 255}
 	c := NewCache(imgpkg.NewFetcher(cache, http.DefaultClient), imgpkg.NewKittyRenderer(imgpkg.NewRegistry()), true)
-	if got := c.GetSmallBadged("U1", green, false); got != "" {
-		t.Fatalf("badged avatar before the avatar loaded = %q, want empty", got)
+	if got := c.GetSidebar("U1", green, false); got != "" {
+		t.Fatalf("sidebar avatar before the avatar loaded = %q, want empty", got)
 	}
 	c.PreloadSync("U1", srv.URL)
 	afterPreload := sideCh.Len()
-	online := c.GetSmallBadged("U1", green, false)
+	online := c.GetSidebar("U1", green, false)
 	if !strings.ContainsRune(online, '\U0010EEEE') || sideCh.Len() == afterPreload {
-		t.Fatalf("first badged avatar = %q with %d new upload bytes, want placeholders and an upload", online, sideCh.Len()-afterPreload)
+		t.Fatalf("first sidebar avatar = %q with %d new upload bytes, want placeholders and an upload", online, sideCh.Len()-afterPreload)
 	}
 	afterFirst := sideCh.Len()
-	if again := c.GetSmallBadged("U1", green, false); again != online || sideCh.Len() != afterFirst {
+	if again := c.GetSidebar("U1", green, false); again != online || sideCh.Len() != afterFirst {
 		t.Errorf("second call re-rendered or re-uploaded")
 	}
-	if away := c.GetSmallBadged("U1", green, true); away == "" || away == online {
-		t.Errorf("hollow badge = %q, want its own image, not the filled one's", away)
+	away := c.GetSidebar("U1", green, true)
+	plain := c.GetSidebar("U1", nil, false)
+	if away == "" || plain == "" || away == online || plain == online || plain == away {
+		t.Errorf("filled, hollow and no dot must each be their own image: %q, %q, %q", online, away, plain)
 	}
-	if plain := c.GetSmallBadged("U1", nil, false); plain == "" || plain != c.GetSmall("U1") {
-		t.Errorf("no badge = %q, want the plain small avatar", plain)
+	if plain == c.GetSmall("U1") {
+		t.Error("the sidebar avatar with no dot is the reply-row avatar, want the inset one")
 	}
 
 	halfBlock := NewCache(imgpkg.NewFetcher(cache, http.DefaultClient), nil, false)
 	halfBlock.PreloadSync("U1", srv.URL)
-	if got := halfBlock.GetSmallBadged("U1", green, false); got != "" {
-		t.Errorf("badged avatar off kitty = %q, want empty", got)
+	if got := halfBlock.GetSidebar("U1", green, false); got != "" {
+		t.Errorf("sidebar avatar off kitty = %q, want empty", got)
 	}
 }
