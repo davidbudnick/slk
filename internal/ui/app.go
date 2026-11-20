@@ -441,12 +441,15 @@ type App struct {
 	sixelAvatarFn messages.SixelAvatarFunc // nil unless the service draws sixel avatars
 	replyAvatarFn messages.AvatarFunc
 	replyAvatars  bool
-	imageCtx      imgrender.ImageContext
-	emojiCtx      messages.EmojiContext
-	emojiCustoms  map[string]string
-	channelNames  map[string]string // UI-owned mention names, independent of sidebar membership
-	userGroups    map[string]string
-	selfGroups    map[string]bool // usergroups the current user is in
+	// sidebarAvatarFn is nil unless the service draws sidebar avatars.
+	sidebarAvatarFn sidebar.AvatarFunc
+	sidebarAvatars  bool
+	imageCtx        imgrender.ImageContext
+	emojiCtx        messages.EmojiContext
+	emojiCustoms    map[string]string
+	channelNames    map[string]string // UI-owned mention names, independent of sidebar membership
+	userGroups      map[string]string
+	selfGroups      map[string]bool // usergroups the current user is in
 
 	// buildInfo is the build identity :version shows: version and short
 	// commit (version.Short). Set once at startup by main.
@@ -3234,6 +3237,10 @@ func (a *App) SetAvatarService(s core.AvatarService) {
 		}
 	}
 	a.avatarFn, a.replyAvatarFn, a.sixelAvatarFn = fn, replyFn, sixelFn
+	a.sidebarAvatarFn = nil
+	if sb, ok := s.(core.SidebarAvatarService); ok {
+		a.sidebarAvatarFn = sb.SidebarAvatar
+	}
 	for _, m := range a.allWinModels() {
 		m.SetAvatarFunc(fn)
 		m.SetSixelAvatarFunc(sixelFn)
@@ -3242,6 +3249,24 @@ func (a *App) SetAvatarService(s core.AvatarService) {
 	a.threadPanel.SetAvatarFunc(fn)
 	a.threadPanel.SetSixelAvatarFunc(sixelFn)
 	a.threadsView.SetAvatarFunc(fn)
+	a.sidebar.SetAvatarFunc(a.sidebarAvatarFunc())
+}
+
+// SetSidebarAvatars draws DM and app avatars in the sidebar in place of
+// their glyphs ([sidebar] avatars). Needs an avatar service that draws
+// them.
+func (a *App) SetSidebarAvatars(enabled bool) {
+	a.sidebarAvatars = enabled
+	a.sidebar.SetAvatarFunc(a.sidebarAvatarFunc())
+}
+
+// sidebarAvatarFunc is the sidebar's avatar source, nil when avatars
+// are off there or the service can't draw them.
+func (a *App) sidebarAvatarFunc() sidebar.AvatarFunc {
+	if !a.sidebarAvatars {
+		return nil
+	}
+	return a.sidebarAvatarFn
 }
 
 // SetReplyAvatars switches the reply row under thread parents to Slack's

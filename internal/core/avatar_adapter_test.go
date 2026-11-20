@@ -24,3 +24,26 @@ func TestNewSixelAvatarService(t *testing.T) {
 		t.Error("service without a sixel source claims to be a SixelAvatarService")
 	}
 }
+
+func TestNewSidebarAvatarService(t *testing.T) {
+	plain := NewAvatarService(func(string) string { return "HB" }, nil)
+	s := NewSidebarAvatarService(plain, func(userID string, badge AvatarBadge) string {
+		if badge.Hollow {
+			return "away-" + userID
+		}
+		return "on-" + userID
+	})
+	sb, ok := s.(SidebarAvatarService)
+	if !ok {
+		t.Fatal("service with a sidebar source is not a SidebarAvatarService")
+	}
+	if got := sb.SidebarAvatar("U1", AvatarBadge{Hollow: true}); got != "away-U1" {
+		t.Errorf("SidebarAvatar(U1) = %q, want the badged avatar", got)
+	}
+	if got := s.Avatar("U1"); got != "HB" {
+		t.Errorf("Avatar(U1) = %q, want the wrapped service's avatar", got)
+	}
+	if _, ok := NewSidebarAvatarService(plain, nil).(SidebarAvatarService); ok {
+		t.Error("service without a sidebar source claims to be a SidebarAvatarService")
+	}
+}

@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"image/color"
 	"time"
 
 	"github.com/gammons/slk/internal/core/blocks"
@@ -205,6 +206,13 @@ const ThreadPreviewReplies = 2
 // ThreadPreviewParticipants caps the authors a ThreadSummary names: the
 // parent's plus Slack's reply_users, which holds at most five.
 const ThreadPreviewParticipants = 6
+
+// AvatarBadge is the presence mark drawn on the corner of a sidebar
+// avatar: a dot in Color, or a ring when Hollow. A nil Color draws none.
+type AvatarBadge struct {
+	Color  color.Color
+	Hollow bool
+}
 
 // ThreadReply is one reply previewed under its thread in the Threads view.
 type ThreadReply struct {

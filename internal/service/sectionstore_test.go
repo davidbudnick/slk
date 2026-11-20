@@ -139,8 +139,24 @@ func TestSectionStore_OrderedSections_StarsRenderWhenNonEmpty(t *testing.T) {
 	}
 }
 
+// Slack lists the apps section with no channel IDs. It must still reach
+// the sidebar, which buckets app DMs into it; hidden, they fall into
+// the channels section.
+func TestSectionStore_OrderedSections_AppsSectionKeptWithNoChannelIDs(t *testing.T) {
+	sections := []slk.SidebarSection{
+		{ID: "DM", Type: "direct_messages", Name: "Direct messages", Next: "AP", LastUpdate: 1},
+		{ID: "AP", Type: "recent_apps", Name: "Apps", Next: "", LastUpdate: 1},
+	}
+	store := NewSectionStore()
+	_ = store.Bootstrap(context.Background(), &fakeSectionsClient{sections: sections})
+	got := store.OrderedSections()
+	if len(got) != 2 || got[1].ID != "AP" {
+		t.Fatalf("got %+v, want the apps section after direct messages", got)
+	}
+}
+
 // An empty stars section must stay hidden so users who haven't starred
-// anything don't see an empty header — mirrors recent_apps semantics.
+// anything don't see an empty header.
 func TestSectionStore_OrderedSections_StarsHiddenWhenEmpty(t *testing.T) {
 	sections := []slk.SidebarSection{
 		{ID: "ST", Type: "stars", Name: "", Next: "U", LastUpdate: 1},

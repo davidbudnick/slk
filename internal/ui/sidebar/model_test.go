@@ -559,6 +559,36 @@ func TestSlackMode_UnclaimedItemFallsToTypeDefault(t *testing.T) {
 	}
 }
 
+// An app DM no section claims lands in Slack's apps section, which
+// Slack lists with no members and names "Recent apps" where its own
+// sidebar says "Apps"; without app DMs its header is not drawn.
+func TestSlackMode_AppFallsToTheAppsSection(t *testing.T) {
+	provider := &fakeProvider{ready: true, sections: []SectionMeta{
+		{ID: "CH", Name: "Channels", Type: "channels"},
+		{ID: "DMS", Name: "Direct messages", Type: "direct_messages"},
+		{ID: "APPS", Name: "Recent apps", Type: "recent_apps"},
+	}}
+	m := New([]ChannelItem{
+		{ID: "C1", Name: "general", Type: "channel"},
+		{ID: "DA", Name: "jira", Type: "app", DMUserID: "UAPP"},
+	})
+	m.SetSectionsProvider(provider)
+	if got := m.sectionFor(m.items[1]); got != "APPS" {
+		t.Errorf("app DM bucketed under %q, want APPS", got)
+	}
+	if got := strings.Join(slackModeNavHeaders(&m), ","); got != "CH,APPS" {
+		t.Errorf("headers = %s, want CH,APPS", got)
+	}
+	plain := ansiRe.ReplaceAllString(m.View(12, 30), "")
+	if !strings.Contains(plain, "Apps") || strings.Contains(plain, "Recent apps") {
+		t.Errorf("apps header must read \"Apps\":\n%s", plain)
+	}
+	m.SetItems([]ChannelItem{{ID: "C1", Name: "general", Type: "channel"}})
+	if got := strings.Join(slackModeNavHeaders(&m), ","); got != "CH" {
+		t.Errorf("headers with no app DM = %s, want CH alone", got)
+	}
+}
+
 func TestOrderedSections_ConfigMode_UnchangedWhenNoProvider(t *testing.T) {
 	// Regression guard: existing config-glob behavior must be intact.
 	items := []ChannelItem{

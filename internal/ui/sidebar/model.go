@@ -320,6 +320,9 @@ type Model struct {
 	// privateGlyph replaces "◆" before private channels when set
 	// ([sidebar] private_glyph).
 	privateGlyph string
+	// avatarFn draws DM and app avatars in place of their glyphs
+	// ([sidebar] avatars); nil keeps the glyphs.
+	avatarFn AvatarFunc
 	// activeOnly hides conversations inactive for activeOnlyWindow in
 	// every section, like Slack's "Active only" ([sidebar] active_only).
 	activeOnly bool
@@ -842,9 +845,10 @@ func (m *Model) SetChannelIndent(n int) {
 // sidebar.
 const maxChannelIndent = 6
 
-// SetSlackStyle turns on Slack's sidebar look: no "▾" on expanded
-// headers, regular-weight headers, no unread dot (bold is enough), and
-// names sorted ignoring punctuation.
+// SetSlackStyle turns on Slack's sidebar look: headers start at their
+// emoji with no "▾" (a collapsed one ends in "▸"), regular-weight
+// headers, no unread dot (bold is enough), and names sorted ignoring
+// punctuation.
 func (m *Model) SetSlackStyle(enabled bool) {
 	m.slackStyle = enabled
 	m.refilter()
@@ -856,6 +860,68 @@ func (m *Model) SetPrivateGlyph(glyph string) {
 	m.privateGlyph = glyph
 	m.cacheValid = false
 	m.dirty()
+}
+
+// AvatarFunc returns a user's small avatar with badge on its corner, or
+// "" while it isn't available.
+type AvatarFunc func(userID string, badge core.AvatarBadge) string
+
+// SetAvatarFunc draws each DM's and app's avatar where its glyph was,
+// as Slack does, and widens every row's glyph to the avatar's cells so
+// the names stay in one column. Nil restores the glyphs.
+func (m *Model) SetAvatarFunc(fn AvatarFunc) {
+	m.avatarFn = fn
+	m.cacheValid = false
+	m.dirty()
+}
+
+// HandleAvatarReady redraws the rows once userID's avatar has loaded.
+func (m *Model) HandleAvatarReady(userID string) {
+	if m.avatarFn == nil {
+		return
+	}
+	for _, item := range m.items {
+		if item.DMUserID == userID {
+			m.cacheValid = false
+			m.dirty()
+			return
+		}
+	}
+}
+
+// iconCells is the width of a row's icon when avatars are drawn.
+const iconCells = 2
+
+// rowIcon is what precedes item's name, with its trailing space: glyph,
+// or the peer's avatar when one can be drawn. With avatars on, a glyph
+// is padded to the avatar's width.
+func (m *Model) rowIcon(item ChannelItem, glyph string, now time.Time) string {
+	if m.avatarFn == nil {
+		return glyph
+	}
+	if item.DMUserID != "" && (item.Type == "dm" || item.Type == "app") {
+		// The reset lets each row variant re-apply its own colours after the image.
+		if av := m.avatarFn(item.DMUserID, presenceBadge(item, now)); av != "" && !strings.Contains(av, "\n") {
+			return av + "\x1b[0m "
+		}
+	}
+	return glyph + strings.Repeat(" ", max(iconCells+1-lipgloss.Width(glyph), 0))
+}
+
+// presenceBadge is the mark on a DM peer's avatar: Slack's green dot
+// when active, a ring when away, in the colours of the glyphs it stands
+// in for. Apps have none.
+func presenceBadge(item ChannelItem, now time.Time) core.AvatarBadge {
+	switch {
+	case item.Type != "dm":
+		return core.AvatarBadge{}
+	case item.Status.InDND(now):
+		return core.AvatarBadge{Color: styles.Warning}
+	case item.Presence == "active":
+		return core.AvatarBadge{Color: styles.PresenceOnline.GetForeground()}
+	default:
+		return core.AvatarBadge{Color: styles.PresenceAway.GetForeground(), Hollow: true}
+	}
 }
 
 // SetActiveOnly hides conversations with no activity in
@@ -2276,6 +2342,7 @@ func (m *Model) buildCache(width int) {
 		default:
 			prefix = "# "
 		}
+		prefix = m.rowIcon(item, prefix, statusNow)
 
 		// Truncate name to fit sidebar width.
 		// Unicode chars like ● (U+25CF), ○, ◆, ▌ have East Asian Width
@@ -2314,8 +2381,14 @@ func (m *Model) buildCache(width int) {
 		// The indent and a prefix wider than the default 2 cells (a custom
 		// private_glyph) come out of the name's budget, so the prefix's
 		// 3-cell charge keeps its ambiguous-width hedge; the indent shrinks
-		// first so the 5-cell floor never overflows the row.
-		budget := (width - 2) - rowChromeExcludingTrailer - trailerCells - statusCells - max(lipgloss.Width(prefix)-2, 0)
+		// first so the 5-cell floor never overflows the row. An icon's
+		// padding already holds a glyph drawn two cells wide, so with
+		// avatars the charge covers the whole icon.
+		charged := 2
+		if m.avatarFn != nil {
+			charged = iconCells + 1
+		}
+		budget := (width - 2) - rowChromeExcludingTrailer - trailerCells - statusCells - max(lipgloss.Width(prefix)-charged, 0)
 		indent := min(m.channelIndent, max(budget-5, 0))
 		prefix = strings.Repeat(" ", indent) + prefix
 		maxNameLen := max(budget-indent, 5)
@@ -2461,6 +2534,10 @@ func (m *Model) sectionDisplayMeta(sectionKey string) (name, emoji string) {
 		for _, meta := range m.sectionsProvider.OrderedSlackSections() {
 			if meta.ID == sectionKey {
 				name = meta.Name
+				if meta.Type == "recent_apps" {
+					// The API names it "Recent apps"; Slack's own sidebar says "Apps".
+					name = defaultAppsSection
+				}
 				if name == "" {
 					// Built-in sections Slack sends without a user-set
 					// name need a friendly fallback. Today only "stars"
@@ -2532,12 +2609,17 @@ func (m *Model) renderSectionHeaderLabel(name string, width int, cursor string, 
 		emojiCells = headerCells(emojiPrefix)
 	}
 
-	glyph := "▾" // expanded
-	if m.slackStyle {
-		glyph = " "
-	}
-	if m.IsCollapsed(name) {
-		glyph = "▸"
+	// Slack style starts the header at its emoji, as Slack does, and
+	// marks a collapsed one after its name.
+	collapsed := m.IsCollapsed(name)
+	glyph, collapsedMark := "▾ ", ""
+	switch {
+	case m.slackStyle && collapsed:
+		glyph, collapsedMark = "", " ▸"
+	case m.slackStyle:
+		glyph = ""
+	case collapsed:
+		glyph = "▸ "
 	}
 
 	// A collapsed header carries two independent figures, never merged:
@@ -2551,7 +2633,7 @@ func (m *Model) renderSectionHeaderLabel(name string, width int, cursor string, 
 	// what the header reports.
 	aggregates := ""
 	mentions := 0
-	if m.IsCollapsed(name) {
+	if collapsed {
 		var unread int
 		var mentionsAllMuted bool
 		unread, mentions, mentionsAllMuted = m.aggregateForSection(name)
@@ -2585,8 +2667,8 @@ func (m *Model) renderSectionHeaderLabel(name string, width int, cursor string, 
 		aggregates = ""
 	}
 
-	label := " " + glyph + " " + emojiPrefix + displayName + aggregates
-	selected := cursor + glyph + " " + emojiPrefixSelected + displayName + aggregates
+	label := " " + glyph + emojiPrefix + displayName + collapsedMark + aggregates
+	selected := cursor + glyph + emojiPrefixSelected + displayName + collapsedMark + aggregates
 	// The selected variant re-applies bold after the cursor glyph's
 	// reset, as the channel rows do: SectionHeader is bold, and bgAnsi
 	// alone would draw the rest of the header regular. Not on the normal
@@ -2608,7 +2690,8 @@ var headerSpaceReplacer = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ",
 // sectionHeaderChromeCells is what a header label spends before the
 // emoji: the cursor "▌" or a space (2, since "▌" is East Asian
 // Ambiguous and may draw 2 wide, hedged as the channel rows hedge it),
-// then the triangle and its space (2).
+// then the triangle and its space (2), which Slack style draws after
+// the name, and only on a collapsed header.
 const sectionHeaderChromeCells = 4
 
 // fitSectionHeader fits a section header into one line of a sidebar
