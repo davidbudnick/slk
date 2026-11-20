@@ -218,6 +218,14 @@ type AvatarBadge struct {
 	Hollow bool
 }
 
+// UnreadConversation is a conversation with something unread: Mentions
+// is the count its badge shows, 0 when it is only unread, and LatestTS
+// is its newest message.
+type UnreadConversation struct {
+	Mentions int
+	LatestTS string
+}
+
 // CountImage is a count the sidebar draws as an image, Label in Text on
 // Fill: an unread badge's pill, or, with Tile, the square a group DM
 // has for an avatar. With Icon it is instead one of Slack's line icons

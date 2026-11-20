@@ -896,6 +896,23 @@ func (m *Model) SetAvatarFunc(fn AvatarFunc) {
 	m.dirty()
 }
 
+// Unreads is every conversation drawn as unread, by ID, with the count
+// its badge shows and its newest message. The channel finder lists
+// these first, as Slack's switcher does.
+func (m *Model) Unreads() map[string]core.UnreadConversation {
+	if m.readStateReader == nil {
+		return nil
+	}
+	state := m.readStateReader()
+	out := map[string]core.UnreadConversation{}
+	for _, item := range m.items {
+		if st := state[item.ID]; item.wantsAttention(st) {
+			out[item.ID] = core.UnreadConversation{Mentions: item.MentionBadge(st), LatestTS: st.LatestTS}
+		}
+	}
+	return out
+}
+
 // CountFunc returns a count drawn as an image, or "" when it can't be.
 type CountFunc func(c core.CountImage) string
 

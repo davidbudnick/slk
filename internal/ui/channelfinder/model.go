@@ -1,6 +1,7 @@
 package channelfinder
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -68,6 +69,29 @@ type Model struct {
 	// their DMs are never a forwarding destination, as Slack takes no
 	// messages there. Owned by the App, like deactivated.
 	unsendable map[string]bool
+
+	// unreads is the conversations with something unread (SetUnreads).
+	// With no query they are listed first, under their own heading;
+	// unreadRows is how many of filtered's leading rows they are.
+	unreads    map[string]core.UnreadConversation
+	unreadRows int
+}
+
+// The headings over the two groups an empty query lists, as Slack's
+// switcher has them.
+const (
+	unreadsHeading = "Unreads"
+	recentHeading  = "Recent"
+)
+
+// SetUnreads sets the conversations with something unread, by ID. An
+// empty query lists them first and every row shows its count. The map
+// is kept, not copied.
+func (m *Model) SetUnreads(unreads map[string]core.UnreadConversation) {
+	m.unreads = unreads
+	if m.visible {
+		m.filter()
+	}
 }
 
 // SetDeactivatedUsers sets the user IDs whose DMs are offered only to a
@@ -292,6 +316,11 @@ func boxWidth(termWidth int) int {
 func (m *Model) BoxSize(termWidth, termHeight int) (int, int) {
 	start, end := chrome.Window(m.selected, len(m.filtered), maxVisibleRows)
 	nRows := end - start
+	for i := start; i < end; i++ {
+		if m.headingAbove(i) != "" {
+			nRows++
+		}
+	}
 	if nRows < 1 {
 		nRows = 1 // empty list still renders one (message/placeholder) row
 	}
@@ -310,11 +339,45 @@ func (m *Model) ClickRow(termWidth, termHeight, localY int) bool {
 		return false
 	}
 	start, end := chrome.Window(m.selected, len(m.filtered), maxVisibleRows)
-	if row >= end-start {
-		return false
+	for i := start; i < end; i++ {
+		if m.headingAbove(i) != "" {
+			if row == 0 {
+				return false
+			}
+			row--
+		}
+		if row == 0 {
+			m.selected = i
+			return true
+		}
+		row--
 	}
-	m.selected = start + row
-	return true
+	return false
+}
+
+// headingAbove is the heading drawn over result row i: its group's name
+// over the group's first row while an empty query lists unread
+// conversations ahead of the rest, else "".
+func (m *Model) headingAbove(i int) string {
+	switch {
+	case m.unreadRows == 0:
+		return ""
+	case i == 0:
+		return unreadsHeading
+	case i == m.unreadRows:
+		return recentHeading
+	}
+	return ""
+}
+
+// unreadOf is what item idx has unread. Nothing while forwarding, where
+// a destination is picked by name.
+func (m *Model) unreadOf(idx int) (core.UnreadConversation, bool) {
+	if m.forwarding {
+		return core.UnreadConversation{}, false
+	}
+	u, ok := m.unreads[m.items[idx].ID]
+	return u, ok
 }
 
 // Open shows the channel-switching overlay and resets state.
@@ -429,6 +492,7 @@ func (m *Model) filter() {
 		}
 	}()
 	m.filtered = nil
+	m.unreadRows = 0
 	q := text.Fold(m.query)
 	idxs := make([]int, 0, len(m.items))
 	for i, item := range m.items {
@@ -452,6 +516,12 @@ func (m *Model) filter() {
 			return m.lessNoQuery(idxs[i], idxs[j])
 		})
 		m.filtered = idxs
+		for _, idx := range idxs {
+			if _, unread := m.unreadOf(idx); !unread {
+				break
+			}
+			m.unreadRows++
+		}
 		return
 	}
 
@@ -583,10 +653,25 @@ func isSeparator(r rune) bool {
 }
 
 // lessNoQuery reports whether item a should sort before item b when no
-// search query is active. Order: Synthetic DESC (pinned top), Joined DESC,
-// LastVisited DESC, typeRank ASC, Name ASC (case-insensitive).
+// search query is active. Unread conversations come first, as in
+// Slack's switcher: those with a count, then the newest message. Then:
+// Synthetic DESC (pinned top), Joined DESC, LastVisited DESC, typeRank
+// ASC, Name ASC (case-insensitive).
 func (m *Model) lessNoQuery(ai, bi int) bool {
 	a, b := m.items[ai], m.items[bi]
+	ua, unreadA := m.unreadOf(ai)
+	ub, unreadB := m.unreadOf(bi)
+	if unreadA != unreadB {
+		return unreadA
+	}
+	if unreadA {
+		if (ua.Mentions > 0) != (ub.Mentions > 0) {
+			return ua.Mentions > 0
+		}
+		if ua.LatestTS != ub.LatestTS {
+			return ua.LatestTS > ub.LatestTS
+		}
+	}
 	if a.Synthetic != b.Synthetic {
 		return a.Synthetic
 	}
@@ -659,6 +744,10 @@ func (m Model) renderBox(termWidth int) string {
 		// style it is drawn in (for the row background under it).
 		var image string
 		var imageStyle lipgloss.Style
+		// badge is the unread count at the row's end, badgeCells its
+		// width with the space before it.
+		var badge string
+		badgeCells := 0
 		switch {
 		case m.isDeactivated(item):
 			// Dim like a non-joined channel, with no presence or
@@ -698,7 +787,20 @@ func (m Model) renderBox(termWidth int) string {
 					}
 				}
 			}
-			nameBudget := contentWidth - lipgloss.Width(prefix) - 1 - glyphCells
+			// An unread conversation reads as in the sidebar: bold,
+			// with its count at the row's end.
+			if u, unread := m.unreadOf(idx); unread {
+				nameStyle = nameStyle.Bold(true)
+				if u.Mentions > 0 {
+					count := fmt.Sprint(u.Mentions)
+					if u.Mentions > 99 {
+						count = "99+"
+					}
+					badge = styles.MentionBadgeStyle().Render(count)
+					badgeCells = lipgloss.Width(badge) + 1
+				}
+			}
+			nameBudget := contentWidth - lipgloss.Width(prefix) - 1 - glyphCells - badgeCells
 			if nameBudget < 1 {
 				nameBudget = 1
 			}
@@ -721,9 +823,9 @@ func (m Model) renderBox(termWidth int) string {
 		// Backstop for the non-joined branch; the joined branch above
 		// already budgets to fit. An image is appended after it, in
 		// the room left for it.
-		lineWidth := contentWidth
+		lineWidth := contentWidth - badgeCells
 		if image != "" {
-			lineWidth = max(contentWidth-1-m.emojiCtx.ImageCells(), 0)
+			lineWidth = max(lineWidth-1-m.emojiCtx.ImageCells(), 0)
 		}
 		if lipgloss.Width(line) > lineWidth {
 			line = truncate.StringWithTail(line, uint(lineWidth), "…")
@@ -731,10 +833,11 @@ func (m Model) renderBox(termWidth int) string {
 		if image != "" {
 			line += imageStyle.Render(" " + image)
 		}
-		// Right-pad with spaces to fill the row.
-		if pad := contentWidth - lipgloss.Width(line); pad > 0 {
+		// Right-pad with spaces to fill the row, the count at its end.
+		if pad := contentWidth - lipgloss.Width(line) - lipgloss.Width(badge); pad > 0 {
 			line += strings.Repeat(" ", pad)
 		}
+		line += badge
 
 		rows = append(rows, line)
 	}
@@ -742,12 +845,27 @@ func (m Model) renderBox(termWidth int) string {
 	f := chrome.Frame{
 		Title: titleText,
 		Input: chrome.FilterInput(s, m.query, "Type to filter..."),
-		Body:  list.Rows(s, m.selected, rows),
+		Body:  m.withHeadings(s, list, rows, contentWidth),
 	}
 	if m.query != "" {
 		f.Empty = "No matching channels"
 	}
 	return f.Render(s, overlayWidth)
+}
+
+// withHeadings draws rows, the content of result rows from list.Start
+// on, as list.Rows does, with each group's heading over its first row.
+func (m Model) withHeadings(s chrome.Styles, list chrome.List, rows []string, contentWidth int) []string {
+	heading := lipgloss.NewStyle().Background(styles.ThemeBackground()).Foreground(styles.TextMuted).Width(contentWidth)
+	out := make([]string, 0, len(rows)+2)
+	for k, row := range rows {
+		i := list.Start + k
+		if label := m.headingAbove(i); label != "" {
+			out = append(out, chrome.Marker(s, false)+heading.Render(label)+list.Gutter(s, i))
+		}
+		out = append(out, chrome.Marker(s, i == m.selected)+row+list.Gutter(s, i))
+	}
+	return out
 }
 
 // channelPrefix returns the display prefix for a channel type. st is
@@ -773,7 +891,7 @@ func channelPrefix(item core.ChannelFinderItem, st peerstatus.Status) string {
 			return lipgloss.NewStyle().Foreground(styles.Accent).Render("●")
 		}
 		return lipgloss.NewStyle().Foreground(styles.TextMuted).Render("○")
-	case "group_dm":
+	case "group_dm", "app":
 		return lipgloss.NewStyle().Foreground(styles.TextMuted).Render("●")
 	default:
 		return lipgloss.NewStyle().Foreground(styles.TextMuted).Render("#")

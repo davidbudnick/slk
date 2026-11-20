@@ -296,6 +296,7 @@ func handleNormalMode(a *App, msg tea.KeyMsg) tea.Cmd {
 		a.SetMode(ModePresenceMenu)
 
 	case key.Matches(msg, a.keys.FuzzyFinder) || key.Matches(msg, a.keys.FuzzyFinderAlt):
+		a.channelFinder.SetUnreads(a.sidebar.Unreads())
 		a.channelFinder.Open()
 		a.SetMode(ModeChannelFinder)
 
