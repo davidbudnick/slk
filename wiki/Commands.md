@@ -31,7 +31,7 @@ the status bar beside the prompt, with the current one highlighted.
 | `:suppressed` | | List the authors hidden in this workspace. `Backspace` on a row stops hiding them, and their messages come back |
 | `:sp` | `Ctrl+w s` | Split the focused window, one above the other |
 | `:vsp` | `Ctrl+w v` | Split the focused window side by side |
-| `:q` | `Ctrl+w q` | Close the focused window. This never quits slk: on the last window it says "Cannot close last window" |
+| `:q` | `Ctrl+w q` | Close the focused window, and from the last window quit slk without asking, as vi does. `Ctrl+w q` never quits: on the last window it says "Cannot close last window" |
 | `:only` (or `:on`) | `Ctrl+w o` | Close every window except the focused one |
 | `:help` | `?` | Open the keybindings overlay, which also lists every `:` command |
 | `:version` | `slk --version` from the shell, which also prints the build date | Show the running build's version and short commit in the status bar |
@@ -55,7 +55,6 @@ These aren't `:` commands, but slk does them:
 | `:join`, `:goto`, `:chan` | `Ctrl+t` or `Ctrl+p` opens the channel finder; `/open #channel` in a composer joins and opens a channel by name |
 | `:i` | `i` starts writing a message (Insert mode) |
 | `:w` | `Enter` in Insert mode sends the message |
-| `:q` to quit | `Q` or `Ctrl+c` quits after asking (`q` closes the thread pane) |
 
 ## Slash commands
 

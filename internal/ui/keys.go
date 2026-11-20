@@ -189,7 +189,7 @@ func DefaultKeyMap() KeyMap {
 		WinVSplit:    key.NewBinding(key.WithHelp("ctrl+w v / :vsp", "vertical split window")),
 		WinNavigate:  key.NewBinding(key.WithHelp("ctrl+w h/j/k/l", "focus window in direction")),
 		WinCycle:     key.NewBinding(key.WithHelp("ctrl+w w", "cycle windows")),
-		WinClose:     key.NewBinding(key.WithHelp("ctrl+w q / :q", "close window")),
+		WinClose:     key.NewBinding(key.WithHelp("ctrl+w q / :q", "close window (:q quits from the last)")),
 		WinOnly:      key.NewBinding(key.WithHelp("ctrl+w o / :only", "close other windows")),
 		// Insert mode, thread compose only: toggles Slack's
 		// "Also send to #channel" checkbox for the next reply.
