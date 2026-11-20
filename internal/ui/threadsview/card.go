@@ -153,7 +153,12 @@ func (m *Model) channelTitle(s core.ThreadSummary, selected bool) string {
 	if name == "" {
 		name = s.ChannelName
 	}
-	isDM := s.ChannelType == "dm" || s.ChannelType == "group_dm"
+	chType := s.ChannelType
+	if chType == "" && strings.HasPrefix(s.ChannelID, "D") {
+		// A DM the channel cache has not seen: Slack's D ids are DMs.
+		chType = "dm"
+	}
+	isDM := chType == "dm" || chType == "group_dm"
 	if isDM && (name == "" || strings.HasPrefix(name, "mpdm-")) {
 		name = strings.Join(m.otherParticipants(s), ", ")
 		if name == "" && m.selfIn(s) {
@@ -164,14 +169,14 @@ func (m *Model) channelTitle(s core.ThreadSummary, selected bool) string {
 		name = s.ChannelID
 	}
 	glyphStyle := lipgloss.NewStyle().Foreground(styles.TextMuted).Background(styles.Background)
-	if s.ChannelType == "private" {
+	if chType == "private" {
 		glyphStyle = glyphStyle.Foreground(styles.Warning)
 	}
 	nameStyle := lipgloss.NewStyle().Foreground(styles.TextPrimary).Background(styles.Background).Bold(true)
 	if selected && m.focused {
 		nameStyle = nameStyle.Foreground(styles.Primary)
 	}
-	title := glyphStyle.Render(messages.ChannelGlyph(s.ChannelType)) + bgStyle().Render(" ") + nameStyle.Render(name)
+	title := glyphStyle.Render(messages.ChannelGlyph(chType)) + bgStyle().Render(" ") + nameStyle.Render(name)
 	if s.Unread {
 		title += bgStyle().Render("  ") + lipgloss.NewStyle().Foreground(styles.Primary).Background(styles.Background).Bold(true).Render("●")
 	}

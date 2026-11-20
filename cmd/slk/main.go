@@ -1294,6 +1294,7 @@ func run() error {
 		}
 		app.SetFileService(core.NewFileService(upload, fileDownloader.Download))
 
+		threadAuthors := &threadAuthorRequests{}
 		app.SetThreadService(core.NewThreadService(core.ThreadServiceFuncs{
 			Fetch: func(channelID ids.ChannelID, threadTS ids.ThreadTS) core.Msg {
 				chIDStr, threadTSStr := string(channelID), string(threadTS)
@@ -1394,7 +1395,7 @@ func run() error {
 						SubscriptionsAvailable: wctx.SubscriptionsAvailable,
 					}
 				}
-				requestThreadAuthors(wctx, summaries)
+				threadAuthors.request(wctx, teamIDStr, summaries)
 				// With per-thread last_read in thread_subscriptions, the Unread
 				// flag is now authoritative — the old ThreadsHasUnreads
 				// suppression heuristic that protected against stale
