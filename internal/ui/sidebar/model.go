@@ -254,6 +254,7 @@ type Model struct {
 	items    []ChannelItem
 	width    int // configurable panel width; 0 means defaultWidth
 	yOffset  int // own scroll state -- replaces bubbles/viewport
+	hover    int // 1-based cacheRows line under the pointer; 0 when none
 	filter   string
 	filtered []int // indices into items that match filter
 
@@ -2132,6 +2133,9 @@ type renderRow struct {
 	// isActivityRow flags the synthetic Activity row so View() can swap
 	// in the `active` variant whenever m.activityActive is true.
 	isActivityRow bool
+	// closable marks a DM, group DM or app row with no badge, on which
+	// View() draws the close mark while the pointer is over it.
+	closable bool
 }
 
 // buildCache rebuilds m.cacheRows for the given width. Expensive; runs only
@@ -2592,6 +2596,7 @@ func (m *Model) buildCache(width int) {
 			navIdx:         ni,
 			channelID:      item.ID,
 			mention:        item.MentionBadge(readState[item.ID]) > 0,
+			closable:       m.slackStyle && !hasBadge && Closable(item),
 		})
 	}
 
@@ -3099,6 +3104,9 @@ func (m *Model) View(height, width int) string {
 			visible = append(visible, m.cacheFiller)
 		default:
 			visible = append(visible, r.normal)
+		}
+		if r.closable && i+1 == m.hover {
+			visible[len(visible)-1] = withCloseMark(visible[len(visible)-1], width)
 		}
 	}
 	for len(visible) < height {

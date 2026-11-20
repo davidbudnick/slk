@@ -221,6 +221,9 @@ func reduceMouseClick(a *App, m tea.MouseClickMsg) tea.Cmd {
 		if sidebarY < 0 {
 			return nil
 		}
+		if item, ok := a.sidebar.CloseAt(x-a.layout.RailWidth()-1, sidebarY); ok {
+			return a.closeConversation(item)
+		}
 		if item, ok := a.sidebar.ClickAt(sidebarY); ok {
 			return func() tea.Msg {
 				return ChannelSelectedMsg{ID: item.ID, Name: item.Name, Type: item.Type}

@@ -1,6 +1,10 @@
 package main
 
 import (
+	"context"
+	"log"
+	"time"
+
 	"github.com/gammons/slk/internal/core"
 	"github.com/gammons/slk/internal/ui"
 	"github.com/gammons/slk/internal/ui/sidebar"
@@ -16,9 +20,60 @@ import (
 // workspace is active — forwards a ConversationOpenedMsg to the UI
 // so the live sidebar and channel finder (Ctrl+P) both update.
 func (h *rtmEventHandler) OnConversationOpened(ch slack.Channel) {
+	ch, ok := h.completeGroupDM(ch)
+	if !ok {
+		return
+	}
 	if item, finderItem, ok := h.addConversation(ch); ok {
 		h.publishConversation(item, finderItem)
 	}
+}
+
+// completeGroupDM looks up a group DM that an open event named by ID
+// alone, as Slack does for a closed one opened again: the row is built
+// from the name conversations.info returns. False means it could not
+// be looked up, and there is nothing to build a row from.
+func (h *rtmEventHandler) completeGroupDM(ch slack.Channel) (slack.Channel, bool) {
+	if !ch.IsMpIM || ch.Name != "" {
+		return ch, true
+	}
+	if h.resolveConversation == nil {
+		return ch, false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	full, err := h.resolveConversation(ctx, ch.ID)
+	if err != nil || full == nil {
+		log.Printf("workspace %s: looking up a group DM that was opened again: %v", h.workspaceID, err)
+		return ch, false
+	}
+	return *full, true
+}
+
+// OnConversationClosed handles im_close, mpim_close and group_close:
+// the user closed a DM or group DM on one of their clients, this one
+// included. Its row leaves the workspace's sidebar set and, when the
+// workspace is active, the live sidebar. The finder keeps the
+// conversation, which is how it is opened again.
+func (h *rtmEventHandler) OnConversationClosed(channelID string) {
+	if h.wsCtx == nil {
+		return
+	}
+	kept := make([]sidebar.ChannelItem, 0, len(h.wsCtx.Channels))
+	for _, item := range h.wsCtx.Channels {
+		if item.ID == channelID && (item.Type == "dm" || item.Type == "group_dm" || item.Type == "app") {
+			continue
+		}
+		kept = append(kept, item)
+	}
+	if len(kept) == len(h.wsCtx.Channels) {
+		return
+	}
+	h.wsCtx.Channels = kept
+	if h.program == nil || (h.isActive != nil && !h.isActive()) {
+		return
+	}
+	h.program.Send(ui.ConversationClosedMsg{TeamID: h.workspaceID, ChannelID: channelID})
 }
 
 // addConversation is OnConversationOpened without the UI message.

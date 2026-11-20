@@ -79,8 +79,17 @@ var reduceNewMessagePicker reducerFunc = func(a *App, msg tea.Msg) (tea.Cmd, boo
 		}
 
 		channelID := m.ChannelID
+		// The row's own name and type where there is one: without a
+		// name the pane, the status bar and the input come up unnamed.
+		name := a.deriveConversationName(channelType, m.UserIDs)
+		for _, item := range a.sidebar.Items() {
+			if item.ID == channelID {
+				name, channelType = item.Name, item.Type
+				break
+			}
+		}
 		emitSelected := func() tea.Msg {
-			return ChannelSelectedMsg{ID: channelID, Type: channelType}
+			return ChannelSelectedMsg{ID: channelID, Name: name, Type: channelType}
 		}
 		return tea.Batch(emitSelected, focus, keptDraft), true
 

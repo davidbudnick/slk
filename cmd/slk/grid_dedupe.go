@@ -110,6 +110,8 @@ var gridPerWorkspaceFrames = map[string]bool{
 	// OnConversationOpened). The dispatcher maps all five types to it.
 	"mpim_open": true, "im_created": true, "im_open": true,
 	"group_joined": true, "channel_joined": true,
+	// And OnConversationClosed, which takes a row back out.
+	"im_close": true, "mpim_close": true, "group_close": true,
 	// Thread subscriptions: UpsertThreadSubscription keys on
 	// workspace_id, so each session must persist its own row - and an
 	// unsubscribe must tombstone it on every session.
