@@ -70,11 +70,19 @@ var slashCommands = map[string]commandFunc{
 	"/part":   slashUnsupported("/part"),
 }
 
-// slashCommandList is what the composers' "/" menu offers: the active
-// workspace's commands as CommandService has them, read each time the
-// menu opens. Nothing is offered while they are unknown.
+// slashCommandList is what the composers' "/" menu offers: slk's own
+// /attach, then the active workspace's commands as CommandService has
+// them, read each time the menu opens.
 func (a *App) slashCommandList() []core.SlashCommand {
-	return a.commandSvc.List()
+	known := a.commandSvc.List()
+	list := make([]core.SlashCommand, 0, len(known)+1)
+	list = append(list, attachMenuEntry)
+	for _, c := range known {
+		if !strings.EqualFold(c.Name, attachCommand) {
+			list = append(list, c)
+		}
+	}
+	return list
 }
 
 // commandOrigin says where a slash command was typed: the conversation
@@ -110,6 +118,11 @@ func (a *App) trySlashCommand(panel Panel, c *compose.Model, channelID, threadTS
 	name, _, ok := parseSlashCommand(raw)
 	if !ok {
 		return nil, false
+	}
+	if name == attachCommand {
+		// slk's own, and the one command that adds files: it stays in
+		// the composer rather than sending anything.
+		return a.runAttachCommand(panel, c, raw), true
 	}
 	if len(c.Attachments()) > 0 {
 		return toastWithClear(a, "Files can't be sent with a command", 3*time.Second), true

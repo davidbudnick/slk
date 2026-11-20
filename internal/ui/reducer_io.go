@@ -117,6 +117,9 @@ var reduceIO reducerFunc = func(a *App, msg tea.Msg) (tea.Cmd, bool) {
 	case tea.PasteMsg:
 		return reducePaste(a, m), true
 
+	case filesChosenMsg:
+		return a.reduceFilesChosen(m), true
+
 	case statusbar.CopiedMsg:
 		// No toast means no clear: a clear scheduled now would belong
 		// to the toast on screen, such as an upload's progress.
@@ -363,21 +366,24 @@ func reducePaste(a *App, m tea.PasteMsg) tea.Cmd {
 		return nil
 	}
 	if a.mode != ModeInsert {
-		return nil
+		return a.attachDropped(m.Content)
 	}
 	if a.compose.Uploading() || a.threadCompose.Uploading() {
 		// Same in-flight draft invariant as handleInsertMode: a paste
 		// must not alter the uploading composer's caption/attachments.
 		return toastWithClear(a, "Upload in progress", 2*time.Second)
 	}
+	target := &a.compose
+	if a.focusedPanel == PanelThread && a.threadVisible {
+		target = &a.threadCompose
+	}
 	if a.clipboardAvailable {
-		target := &a.compose
-		if a.focusedPanel == PanelThread && a.threadVisible {
-			target = &a.threadCompose
-		}
 		if consumed, cmd := a.tryAttachFromClipboard(target, m.Content); consumed {
 			return cmd
 		}
+	} else if cmd, ok := a.attachNamed(target, m.Content); ok {
+		// Dropped files need no clipboard: their paths are the paste.
+		return cmd
 	}
 	if a.focusedPanel == PanelThread && a.threadVisible {
 		var cmd tea.Cmd

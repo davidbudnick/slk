@@ -340,6 +340,7 @@ func run() error {
 		Open:          launchOS,
 		ReadClipboard: nativeClipboardRead,
 		Stat:          os.Stat,
+		ChooseFiles:   newFileChooser().Choose,
 		SaveThread:    export.SaveThread,
 	}
 	if sr := notify.NewStatusReporter(cfg.Notifications.StatusCommand); sr != nil {

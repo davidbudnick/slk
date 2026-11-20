@@ -97,6 +97,17 @@ slk does the same:
 | `/dm @someone [message]` | Same as `/msg` |
 | `/leave`, `/close`, `/part` | Not supported yet; slk says so |
 
+slk adds one of its own, first in the `/` menu:
+
+| Command | What it does |
+|---|---|
+| `/attach` | Open the system's file chooser (macOS's own; `zenity` or `kdialog` on Linux) and attach what you pick, several files if you like. Slack's "Upload from your computer" |
+| `/attach path` | Attach the file at `path`: `~/` is your home directory, a space in a name is written `\ ` or the path is quoted, and several paths attach several files |
+
+`/attach` sends nothing. It leaves the files in the composer, where you can
+add a caption, attach more, or take the last one off with `Backspace`, and
+`Enter` sends them. A file over 10 MB is refused.
+
 ### Everything else
 
 Any other command goes to Slack, as the web client sends it: `/remind`,

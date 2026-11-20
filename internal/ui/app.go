@@ -7,7 +7,7 @@ import (
 	"image"
 	"log"
 	"maps"
-	"mime"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -4516,28 +4516,9 @@ func (a *App) tryAttachFromClipboard(target *compose.Model, pathCandidate string
 		)
 	}
 
-	// 2. File-path text.
-	if path, ok := resolveFilePath(pathCandidate); ok {
-		info, err := a.desktop.Stat(path)
-		if err == nil && info.Mode().IsRegular() {
-			if info.Size() > maxAttachmentSize {
-				return true, toastWithClear(a, "File too large (>10 MB limit)", 3*time.Second)
-			}
-			if info.Size() == 0 {
-				return true, toastWithClear(a, "Empty file", 2*time.Second)
-			}
-			filename := filepath.Base(path)
-			target.AddAttachment(core.PendingAttachment{
-				Filename: filename,
-				Path:     path,
-				Mime:     mime.TypeByExtension(filepath.Ext(path)),
-				Size:     info.Size(),
-			})
-			return true, toastWithClear(a,
-				fmt.Sprintf("Attached: %s (%s)", filename, humanSize(info.Size())),
-				2*time.Second,
-			)
-		}
+	// 2. File-path text: one path, or the paths of dropped files.
+	if cmd, ok := a.attachNamed(target, pathCandidate); ok {
+		return true, cmd
 	}
 
 	return false, nil
@@ -5007,6 +4988,15 @@ func resolveFilePath(text string) (string, bool) {
 	s := strings.TrimSpace(text)
 	if s == "" || strings.ContainsAny(s, "\n\r") || len(s) > 4096 {
 		return "", false
+	}
+	if strings.HasPrefix(s, "file://") {
+		// A file URL, as some terminals and file managers hand over a
+		// dropped or copied file.
+		u, err := url.Parse(s)
+		if err != nil || (u.Host != "" && u.Host != "localhost") || u.Path == "" {
+			return "", false
+		}
+		s = u.Path
 	}
 	if strings.HasPrefix(s, "~/") {
 		home, err := os.UserHomeDir()
