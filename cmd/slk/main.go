@@ -1378,6 +1378,7 @@ func run() error {
 						SubscriptionsAvailable: wctx.SubscriptionsAvailable,
 					}
 				}
+				requestThreadAuthors(wctx, summaries)
 				// With per-thread last_read in thread_subscriptions, the Unread
 				// flag is now authoritative — the old ThreadsHasUnreads
 				// suppression heuristic that protected against stale

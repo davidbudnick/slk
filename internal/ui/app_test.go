@@ -967,13 +967,13 @@ func TestApp_ClickOnThreadInThreadsViewOpensIt(t *testing.T) {
 	// Re-render so layout reflects ViewThreads.
 	_ = a.View()
 
-	// Click in the messages-pane horizontal zone, on row Y=5. The
-	// messages pane has a 1-row top border, so paneY = 4. With
-	// cardStride=4 and cardContentLines=3, absLine=4 lies on the
-	// first row of card 1 (rows 0-2 = card 0, row 3 = separator,
-	// rows 4-6 = card 1).
+	// Click in the messages-pane horizontal zone, on row Y=9. The
+	// messages pane has a 1-row top border, so paneY = 8: rows 0-1 are
+	// the "Threads" title and the blank under it, rows 2-6 card 0 (its
+	// channel row, then the bordered parent: top, author, body, bottom),
+	// row 7 the spacer, and row 8 the channel row of card 1.
 	clickX := a.layout.sidebarEnd + 5 // anywhere inside the msg pane zone
-	clickY := 5
+	clickY := 9
 	fetchedCh, fetchedTS = "", ""
 	_, cmd := a.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 	if cmd == nil {

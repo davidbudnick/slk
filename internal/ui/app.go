@@ -3241,6 +3241,7 @@ func (a *App) SetAvatarService(s core.AvatarService) {
 	}
 	a.threadPanel.SetAvatarFunc(fn)
 	a.threadPanel.SetSixelAvatarFunc(sixelFn)
+	a.threadsView.SetAvatarFunc(fn)
 }
 
 // SetReplyAvatars switches the reply row under thread parents to Slack's
@@ -3269,6 +3270,7 @@ func (a *App) SetColoredUsernames(enabled bool) {
 		m.SetColoredUsernames(enabled)
 	}
 	a.threadPanel.SetColoredUsernames(enabled)
+	a.threadsView.SetColoredUsernames(enabled)
 }
 
 // SetCompact enables or disables the compact view
@@ -3326,6 +3328,7 @@ func (a *App) SetEmojiContext(ctx messages.EmojiContext) {
 		m.SetEmojiContext(ctx)
 	}
 	a.threadPanel.SetEmojiContext(ctx)
+	a.threadsView.SetEmojiContext(ctx)
 	a.sidebar.SetEmojiContext(ctx)
 	a.channelFinder.SetEmojiContext(ctx)
 	a.reactionPicker.SetEmojiContext(reactionpicker.EmojiContext{
@@ -3713,6 +3716,7 @@ func (a *App) SetCustomEmoji(customs map[string]string) {
 		m.SetEmojiCustoms(customs)
 	}
 	a.threadPanel.SetEmojiCustoms(customs)
+	a.threadsView.SetEmojiCustoms(customs)
 	a.sidebar.SetEmojiCustoms(customs)
 	a.channelFinder.SetEmojiCustoms(customs)
 	a.reactionPicker.SetEmojiCustoms(customs)

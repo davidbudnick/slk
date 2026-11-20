@@ -573,11 +573,22 @@ func (w *World) threadSummaries(teamID string) []core.ThreadSummary {
 				continue
 			}
 			last := rs[len(rs)-1]
-			out = append(out, core.ThreadSummary{
+			s := core.ThreadSummary{
 				ChannelID: c.id, ChannelName: c.name, ChannelType: c.typ,
 				ThreadTS: p.TS, ParentUserID: p.UserID, ParentText: p.Text, ParentTS: p.TS,
 				ReplyCount: len(rs), LastReplyTS: last.TS, LastReplyBy: last.UserID,
-			})
+			}
+			for i, r := range rs[max(len(rs)-core.ThreadPreviewReplies, 0):] {
+				s.Replies[i] = core.ThreadReply{UserID: r.UserID, Text: r.Text, TS: r.TS}
+			}
+			n := 0
+			for _, m := range append([]core.MessageItem{p}, rs...) {
+				if n < len(s.Participants) && !slices.Contains(s.Participants[:n], m.UserID) {
+					s.Participants[n] = m.UserID
+					n++
+				}
+			}
+			out = append(out, s)
 		}
 	}
 	return out
