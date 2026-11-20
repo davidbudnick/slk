@@ -204,6 +204,7 @@ func wantUserUpdates() []cache.EdgeUserUpdate {
 	return []cache.EdgeUserUpdate{
 		{
 			ID: "U_ALICE", Name: "alice-renamed", DisplayName: "alice-display-renamed",
+			RealName:  "Alice Real Renamed",
 			AvatarURL: "https://example.invalid/alice-new.png", IsBot: true, IsExternal: false,
 			HomeTeamID: "T_HOME", WorkspaceID: "T_HOME", Version: 1783337599010,
 		},
@@ -213,6 +214,7 @@ func wantUserUpdates() []cache.EdgeUserUpdate {
 			// reads as "preserve what is stored"; team_id differs from
 			// the workspace, so external.
 			ID: "U_AUTHOR_ONLY", Name: "author-only-renamed", DisplayName: "Author Only Real Renamed",
+			RealName:  "Author Only Real Renamed",
 			AvatarURL: "", IsBot: false, Deleted: true, IsExternal: true,
 			HomeTeamID: "T_OTHER", WorkspaceID: "T_HOME", Version: 1783337599011,
 		},

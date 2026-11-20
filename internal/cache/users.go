@@ -11,8 +11,11 @@ type User struct {
 	HomeTeamID  string
 	Name        string
 	DisplayName string
-	AvatarURL   string
-	Presence    string
+	// RealName is the profile's full name. Empty means unknown, and a
+	// write that carries none keeps the stored one.
+	RealName  string
+	AvatarURL string
+	Presence  string
 	// IsBot is true for Slack apps and classic bots (the union of
 	// slack.User.IsBot and IsAppUser). Used to bucket their DMs into
 	// the "Apps" sidebar section so they don't clutter the human DM
@@ -54,11 +57,12 @@ type User struct {
 // row's flag first, or it will un-delete a deactivated user.
 func (db *DB) UpsertUser(u User) error {
 	_, err := db.conn.Exec(`
-		INSERT INTO users (id, workspace_id, home_team_id, name, display_name, avatar_url, presence, is_bot, deleted, is_external, status_emoji, status_text, status_expiration, huddle_state, huddle_expiration, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO users (id, workspace_id, home_team_id, name, display_name, real_name, avatar_url, presence, is_bot, deleted, is_external, status_emoji, status_text, status_expiration, huddle_state, huddle_expiration, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name,
 			display_name=excluded.display_name,
+			real_name=COALESCE(NULLIF(excluded.real_name, ''), users.real_name),
 			avatar_url=excluded.avatar_url,
 			is_bot=excluded.is_bot,
 			deleted=excluded.deleted,
@@ -66,7 +70,7 @@ func (db *DB) UpsertUser(u User) error {
 			is_external=CASE WHEN users.workspace_id=excluded.workspace_id
 				THEN excluded.is_external ELSE users.is_external END,
 			updated_at=excluded.updated_at
-	`, u.ID, u.WorkspaceID, u.HomeTeamID, u.Name, u.DisplayName, u.AvatarURL, u.Presence, u.IsBot, u.Deleted, u.IsExternal,
+	`, u.ID, u.WorkspaceID, u.HomeTeamID, u.Name, u.DisplayName, u.RealName, u.AvatarURL, u.Presence, u.IsBot, u.Deleted, u.IsExternal,
 		u.StatusEmoji, u.StatusText, u.StatusExpiration, u.HuddleState, u.HuddleExpiration, u.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("upserting user: %w", err)
@@ -91,11 +95,11 @@ func (db *DB) FillUserAvatarURL(id, url string) error {
 func (db *DB) GetUser(id string) (User, error) {
 	var u User
 	err := db.conn.QueryRow(`
-		SELECT id, workspace_id, home_team_id, name, display_name, avatar_url, presence, is_bot, deleted,
+		SELECT id, workspace_id, home_team_id, name, display_name, real_name, avatar_url, presence, is_bot, deleted,
 			CASE WHEN home_team_id != '' THEN home_team_id != workspace_id ELSE is_external END,
 			status_emoji, status_text, status_expiration, huddle_state, huddle_expiration, updated_at
 		FROM users WHERE id = ?
-	`, id).Scan(&u.ID, &u.WorkspaceID, &u.HomeTeamID, &u.Name, &u.DisplayName, &u.AvatarURL, &u.Presence, &u.IsBot, &u.Deleted, &u.IsExternal,
+	`, id).Scan(&u.ID, &u.WorkspaceID, &u.HomeTeamID, &u.Name, &u.DisplayName, &u.RealName, &u.AvatarURL, &u.Presence, &u.IsBot, &u.Deleted, &u.IsExternal,
 		&u.StatusEmoji, &u.StatusText, &u.StatusExpiration, &u.HuddleState, &u.HuddleExpiration, &u.UpdatedAt)
 	if err != nil {
 		return u, fmt.Errorf("getting user: %w", err)
@@ -105,7 +109,7 @@ func (db *DB) GetUser(id string) (User, error) {
 
 func (db *DB) ListUsers(workspaceID string) ([]User, error) {
 	rows, err := db.conn.Query(`
-		SELECT id, workspace_id, home_team_id, name, display_name, avatar_url, presence, is_bot, deleted,
+		SELECT id, workspace_id, home_team_id, name, display_name, real_name, avatar_url, presence, is_bot, deleted,
 			CASE WHEN home_team_id != '' THEN home_team_id != workspace_id ELSE is_external END,
 			status_emoji, status_text, status_expiration, huddle_state, huddle_expiration, updated_at
 		FROM users WHERE workspace_id = ? ORDER BY display_name, name
@@ -118,7 +122,7 @@ func (db *DB) ListUsers(workspaceID string) ([]User, error) {
 	var users []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.WorkspaceID, &u.HomeTeamID, &u.Name, &u.DisplayName, &u.AvatarURL, &u.Presence, &u.IsBot, &u.Deleted, &u.IsExternal,
+		if err := rows.Scan(&u.ID, &u.WorkspaceID, &u.HomeTeamID, &u.Name, &u.DisplayName, &u.RealName, &u.AvatarURL, &u.Presence, &u.IsBot, &u.Deleted, &u.IsExternal,
 			&u.StatusEmoji, &u.StatusText, &u.StatusExpiration, &u.HuddleState, &u.HuddleExpiration, &u.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanning user: %w", err)
 		}

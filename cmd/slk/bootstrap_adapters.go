@@ -428,7 +428,7 @@ func bootUserDisplayName(u boot.User) string {
 // the workspace has other readers.
 func applyBootUsers(wctx *WorkspaceContext, res *bootstrap.Result) {
 	for _, u := range res.Users {
-		name := bootUserDisplayName(u)
+		name := shownName(u.Profile.RealName, bootUserDisplayName(u))
 		wctx.UserNames.Set(u.ID, name)
 		if u.Name != "" {
 			wctx.UserNamesByHandle[u.Name] = name
@@ -718,6 +718,7 @@ func hydrateFirstSight(db *cache.DB, workspaceID string, res *bootstrap.Result) 
 			HomeTeamID:  u.TeamID,
 			Name:        u.Name,
 			DisplayName: bootUserDisplayName(u),
+			RealName:    u.Profile.RealName,
 			AvatarURL:   u.Profile.ImageOriginal,
 			// "away" is what every other first-sight write in slk
 			// records: a view result carries no presence. UpsertUser

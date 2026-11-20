@@ -164,6 +164,10 @@ type Appearance struct {
 	// conversation shorter than the pane sits at its bottom, by the
 	// input. Default off.
 	SlackStyle bool `toml:"slack_style"`
+	// FullNames shows people by their full name, as Slack does by
+	// default, where slk otherwise prefers the display name. Default
+	// off.
+	FullNames bool `toml:"full_names"`
 	// Compact makes everything more compact: hides avatars, renders
 	// user name on the same line as the message, disables extra space
 	// between messages, and reduces padding wherever possible.

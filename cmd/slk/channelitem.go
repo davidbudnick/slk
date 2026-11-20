@@ -70,9 +70,7 @@ func buildChannelItem(ch slack.Channel, wctx *WorkspaceContext, cfg config.Confi
 			displayName = ch.User
 		}
 	} else if ch.IsMpIM {
-		displayName = slackfmt.FormatMPDMName(ch.Name, wctx.UserHandle, func(h string) string {
-			return wctx.UserNamesByHandle[h]
-		})
+		displayName = groupName(ch, wctx)
 	}
 
 	section := ""

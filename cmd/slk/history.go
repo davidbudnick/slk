@@ -341,11 +341,7 @@ func enrichCachedRow(
 			stats.getUserTotal += time.Since(t0)
 		}
 		if err == nil {
-			if u.DisplayName != "" {
-				userName = u.DisplayName
-			} else if u.Name != "" {
-				userName = u.Name
-			}
+			userName = cachedUserName(u)
 			if userName != "" {
 				userNames.Set(effUserID, userName)
 			}

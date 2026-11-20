@@ -48,6 +48,8 @@ reply_avatars = false     # true: Slack-style reply row, repliers' avatars + "N 
 slack_style = false       # true: messages laid out as Slack does. An author's messages
                           # sent within five minutes share one header, and a
                           # conversation shorter than the pane sits at its bottom
+full_names = false        # true: show people by full name ("Ann Lee"), as Slack does
+                          # by default, not by display name ("ann")
 colored_usernames = false # color each user's name by ID hash (Slack-style)
 click_opens_thread = true # false: clicking a message only selects it (Enter
                           # still opens the thread)
