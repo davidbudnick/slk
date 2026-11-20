@@ -86,11 +86,14 @@ See [[Terminal Compatibility|Terminal-Compatibility]] for which protocol your te
   `@here`/`@channel`, user groups and keywords), replies in threads you
   follow, reactions to your messages, and DMs. Open it from the sidebar,
   with `Ctrl+a` (which toggles back to your channel), or with `:activity`.
-- Each item is a card: who, what happened and where (`Mention in #general`,
-  `Reacted in DM`, `Thread in ◆ private`), how long ago, and an unread dot,
-  over the message itself — rendered like the message pane, with emoji,
-  mentions and channel links. Reactions lead with the emoji; DMs are headed
-  by the other person, and your own latest message reads `You: …`
+- Each item is a card laid out as in Slack, beside the author's avatar:
+  who and how long ago (`3 mins`), bold with a dot while unread; the
+  message itself — rendered like the message pane, with emoji, mentions and
+  channel links; then where it happened (`Direct message`,
+  `Mention in #general`, `Thread in ◆ private`). A reaction reads
+  `Reacted 🎉 to: …`; DMs are headed by the other person, and your own
+  latest message reads `You: …`. A rule separates the cards, and the
+  heading counts the unread ones
 - `Enter` opens the item: a thread reply opens the thread in the side panel,
   anything else jumps to the message in its channel
 - `u` toggles unread-only (filtered by Slack, not locally)
@@ -116,7 +119,9 @@ See [[Terminal Compatibility|Terminal-Compatibility]] for which protocol your te
 - **Slack-native sidebar sections** — slk reads your sections directly from Slack and reflects them live: section names, emoji, linked-list order, and channel/DM membership are kept in sync via the same WebSocket events the official client uses. Reorder, rename, create, or delete sections in any other Slack client; slk catches up within a couple seconds. Read-only: section editing still happens in the official client. Falls back to glob-based config sections when disabled or if the API is unavailable.
 - Collapsible sections — `Enter`/`Space` on a section header toggles it. A collapsed header shows aggregate unreads (`▸ Channels •3`). With Slack's sections every section starts expanded; with `[sections.*]` from config the Channels and Apps sections start collapsed. `[sidebar] start_collapsed = true` starts every section collapsed. Opening a channel in a collapsed section shows that channel under the header without expanding the section. With `[sidebar] show_unread_in_collapsed = true` a collapsed section also lists its unread channels, and its header badge still counts them
 - App DMs sit in Slack's Apps section, where Slack's own sidebar puts them
-- Opt-in Slack look (`[sidebar] slack_style`, `channel_indent`, `avatars`): headers start at their emoji, rows sit indented under them, and each DM and app shows its avatar with the peer's presence on its corner (avatars need kitty graphics)
+- Opt-in Slack look (`[sidebar] slack_style`, `channel_indent`, `avatars`): headers start at their emoji, rows sit indented under them, each DM and app shows its avatar with the peer's presence on its corner (avatars need kitty graphics), and the row of what is open is filled
+- One row is marked as open: the Threads or Activity row while that view is up, else the open conversation's
+- Two slk in one terminal (two tmux windows) keep their own images: kitty image IDs start at a random point per run
 - Live unread indicators: bold + blue dot for unread channels, muted text for read ones, aggregate dot+count on collapsed section headers
 - Glob-based config sections (`[sections.*]` in `config.toml`) — used when `use_slack_sections = false` or as a fallback when Slack's API is unreachable. Channel patterns can carry an optional `":<N>"` suffix (e.g. `"eng-general:1"`) to pin order within a section; see [Configuration › Ordering channels within a section](Configuration.md#ordering-channels-within-a-section).
 - Deactivated people are hidden like in the Slack desktop client: their DMs leave the sidebar and they are not offered in the new-message picker or `@` / `#` autocomplete, while old messages still show them as authors. The channel finder shows their DM only when you type their name, marked `deactivated`, so you can still read the history; its composer is disabled. Turn it off with `[general] hide_deactivated_users = false`; see [Configuration › Deactivated users](Configuration.md#deactivated-users).

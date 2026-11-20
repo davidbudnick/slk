@@ -671,7 +671,7 @@ func run() error {
 		var sidebarAvatar func(userID string, badge core.AvatarBadge) string
 		if proto == imgpkg.ProtoKitty {
 			sidebarAvatar = func(userID string, badge core.AvatarBadge) string {
-				if small := avatarCache.GetSmallBadged(userID, badge.Color, badge.Hollow); small != "" {
+				if small := avatarCache.GetSidebar(userID, badge.Color, badge.Hollow); small != "" {
 					return small
 				}
 				lazyAvatar(router.Active(), avatarCache, userID)

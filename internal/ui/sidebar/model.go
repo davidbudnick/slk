@@ -2,6 +2,7 @@ package sidebar
 
 import (
 	"fmt"
+	"image/color"
 	"io"
 	"sort"
 	"strings"
@@ -843,8 +844,8 @@ const maxChannelIndent = 6
 
 // SetSlackStyle turns on Slack's sidebar look: headers start at their
 // emoji with no "▾" (a collapsed one ends in "▸"), regular-weight
-// headers, no unread dot (bold is enough), and names sorted ignoring
-// punctuation.
+// headers, no unread dot (bold is enough), names sorted ignoring
+// punctuation, and the open conversation's row filled.
 func (m *Model) SetSlackStyle(enabled bool) {
 	m.slackStyle = enabled
 	m.refilter()
@@ -966,21 +967,30 @@ func (m *Model) SetActiveChannelID(id string) {
 // destination in the message pane. When true (and cursor is elsewhere),
 // the Threads row renders with the orange active indicator. Mirrors
 // SetActiveChannelID for normal channels.
+//
+// The pane shows one destination, so activating Threads deactivates
+// Activity, and while either is up the open channel's row is not marked.
 func (m *Model) SetThreadsActive(active bool) {
-	if m.threadsActive == active {
+	if m.threadsActive == active && !(active && m.activityActive) {
 		return
 	}
 	m.threadsActive = active
+	if active {
+		m.activityActive = false
+	}
 	m.dirty()
 }
 
 // SetActivityActive marks the synthetic "Activity" row as the active
 // destination in the message pane. Mirrors SetThreadsActive.
 func (m *Model) SetActivityActive(active bool) {
-	if m.activityActive == active {
+	if m.activityActive == active && !(active && m.threadsActive) {
 		return
 	}
 	m.activityActive = active
+	if active {
+		m.threadsActive = false
+	}
 	m.dirty()
 }
 
@@ -1946,8 +1956,12 @@ type renderRow struct {
 	normal   string // rendered as a non-selected row
 	selected string // rendered with the selection cursor + selected style
 	active   string // rendered with the orange "currently-entered" indicator; empty when not applicable
-	height   int    // rendered terminal height (always 1 for headers/blanks)
-	navIdx   int    // index into m.nav, or -1
+	// cursorOnActive is the cursor variant of a row that is also the
+	// active one, when that draws differently from selected (Slack
+	// style keeps the active row filled under the cursor); else empty.
+	cursorOnActive string
+	height         int // rendered terminal height (always 1 for headers/blanks)
+	navIdx         int // index into m.nav, or -1
 	// channelID is set on channel rows and used by View() to swap in the
 	// `active` variant when the row matches m.activeID. Empty for headers,
 	// blanks, and the Threads row.
@@ -2101,16 +2115,21 @@ func (m *Model) buildCache(width int) {
 	threadsNormal := threadsBaseStyle.Width(width - 2).Render(threadsLabel)
 	threadsSelectedRow := styles.ChannelSelected.Width(width - 2).Render(threadsCursor)
 	if pillAttrs != "" {
-		threadsSelectedRow = pillRow(threadsPill, width, pillAttrs)
+		threadsSelectedRow = themePillRow(threadsPill, width, pillAttrs)
 	}
 	threadsActiveRow := styles.ChannelSelected.Width(width - 2).Render(threadsActiveLabel)
+	threadsCursorOnActive := ""
+	if m.slackStyle {
+		threadsActiveRow, threadsCursorOnActive = activePillRows(threadsPill, cursorSelected, width)
+	}
 	m.cacheRows = append(m.cacheRows, renderRow{
-		normal:       threadsNormal,
-		selected:     threadsSelectedRow,
-		active:       threadsActiveRow,
-		height:       1,
-		navIdx:       threadsIdx,
-		isThreadsRow: true,
+		normal:         threadsNormal,
+		selected:       threadsSelectedRow,
+		active:         threadsActiveRow,
+		cursorOnActive: threadsCursorOnActive,
+		height:         1,
+		navIdx:         threadsIdx,
+		isThreadsRow:   true,
 	})
 
 	// Synthetic "Activity" row, rendered directly below the Threads row.
@@ -2140,16 +2159,21 @@ func (m *Model) buildCache(width int) {
 	activityNormal := activityBaseStyle.Width(width - 2).Render(activityLabel)
 	activitySelectedRow := styles.ChannelSelected.Width(width - 2).Render(activityCursor)
 	if pillAttrs != "" {
-		activitySelectedRow = pillRow(activityPill, width, pillAttrs)
+		activitySelectedRow = themePillRow(activityPill, width, pillAttrs)
 	}
 	activityActiveRow := styles.ChannelSelected.Width(width - 2).Render(activityActiveLabel)
+	activityCursorOnActive := ""
+	if m.slackStyle {
+		activityActiveRow, activityCursorOnActive = activePillRows(activityPill, cursorSelected, width)
+	}
 	m.cacheRows = append(m.cacheRows, renderRow{
-		normal:        activityNormal,
-		selected:      activitySelectedRow,
-		active:        activityActiveRow,
-		height:        1,
-		navIdx:        activityIdx,
-		isActivityRow: true,
+		normal:         activityNormal,
+		selected:       activitySelectedRow,
+		active:         activityActiveRow,
+		cursorOnActive: activityCursorOnActive,
+		height:         1,
+		navIdx:         activityIdx,
+		isActivityRow:  true,
 	})
 
 	// Blank separator between the Threads/Activity rows and the first
@@ -2383,25 +2407,30 @@ func (m *Model) buildCache(width int) {
 		rowNormal := baseStyle.Width(width - 2).Render(labelNormal)
 		rowSelected := styles.ChannelSelected.Width(width - 2).Render(labelSelected)
 		if pillAttrs != "" {
-			rowSelected = pillRow(" "+prefix+name+gap+unreadDot, width, pillAttrs)
+			rowSelected = themePillRow(" "+prefix+name+gap+unreadDot, width, pillAttrs)
 		}
 		// Active uses the same bright/bold treatment as Selected so the
 		// entered channel reads as "current" even when its unread count
 		// is zero (which is the common case after MarkChannel runs).
 		rowActive := styles.ChannelSelected.Width(width - 2).Render(labelActive)
+		rowCursorOnActive := ""
+		if m.slackStyle {
+			rowActive, rowCursorOnActive = activePillRows(" "+prefix+name+gap+unreadDot, cursorSelected, width)
+		}
 
 		ni, ok := channelNavIdx[fi]
 		if !ok {
 			ni = -1
 		}
 		sectionMap[sectionName].rows = append(sectionMap[sectionName].rows, renderRow{
-			normal:    rowNormal,
-			selected:  rowSelected,
-			active:    rowActive,
-			height:    1, // every channel row is exactly one line
-			navIdx:    ni,
-			channelID: item.ID,
-			mention:   item.MentionBadge(readState[item.ID]) > 0,
+			normal:         rowNormal,
+			selected:       rowSelected,
+			active:         rowActive,
+			cursorOnActive: rowCursorOnActive,
+			height:         1, // every channel row is exactly one line
+			navIdx:         ni,
+			channelID:      item.ID,
+			mention:        item.MentionBadge(readState[item.ID]) > 0,
 		})
 	}
 
@@ -2701,15 +2730,44 @@ func badgeGap(width int, left, badge string) string {
 	return strings.Repeat(" ", max(n, 1))
 }
 
-// pillRow renders a cursor row as the theme's sidebar_selected_bg pill,
-// inset one column from each edge so its text lines up with the other
-// rows. label starts with the cursor slot; attrs is re-applied after
-// every ANSI reset inside it.
-func pillRow(label string, width int, attrs string) string {
+// themePillRow renders a cursor row as the theme's sidebar_selected_bg
+// pill.
+func themePillRow(label string, width int, attrs string) string {
+	return pillRow(label, width, styles.SidebarSelectedBg, styles.SidebarSelectedFg, attrs)
+}
+
+// activePillRows renders the row of what the message pane has open as
+// Slack does, filled, in the selected message's tint: without the
+// cursor on it, and with. label starts with the cursor slot.
+func activePillRows(label, cursor string, width int) (active, cursorOnActive string) {
+	bg := styles.SelectionTintColor(true)
+	attrs := messages.SelectionTintBgANSI(true) + messages.SidebarFgANSI() + "\x1b[1m"
+	return pillRow(label, width, bg, styles.SidebarText, attrs),
+		pillRow(cursor+strings.TrimPrefix(label, " "), width, bg, styles.SidebarText, attrs)
+}
+
+// pillRow renders a row as a filled pill in bg and fg, inset one column
+// from each edge so its text lines up with the other rows. label starts
+// with the cursor slot; attrs is re-applied after every ANSI reset
+// inside it.
+func pillRow(label string, width int, bg, fg color.Color, attrs string) string {
 	edge := lipgloss.NewStyle().Background(styles.SidebarBackground).Render(" ")
-	pill := lipgloss.NewStyle().Background(styles.SidebarSelectedBg).
-		Foreground(styles.SidebarSelectedFg).Bold(true).Width(width - 4)
+	pill := lipgloss.NewStyle().Background(bg).Foreground(fg).Bold(true).Width(width - 4)
 	return edge + pill.Render(messages.ReapplyBgAfterResets(label, attrs)) + edge
+}
+
+// showsOpen reports whether r is the row of what the message pane has
+// open: the Threads or Activity view while one is up, else the open
+// channel.
+func (m *Model) showsOpen(r renderRow) bool {
+	switch {
+	case m.threadsActive:
+		return r.isThreadsRow
+	case m.activityActive:
+		return r.isActivityRow
+	default:
+		return r.channelID != "" && r.channelID == m.activeID
+	}
 }
 
 func (m *Model) View(height, width int) string {
@@ -2800,22 +2858,20 @@ func (m *Model) View(height, width int) string {
 	cursorLine := -1
 	for i := m.yOffset; i < end; i++ {
 		r := m.cacheRows[i]
+		open := m.showsOpen(r)
 		switch {
 		case r.navIdx >= 0 && r.navIdx == m.cursor:
 			cursorLine = len(visible)
-			visible = append(visible, r.selected)
-		case r.channelID != "" && r.channelID == m.activeID && r.active != "":
-			// This row is the channel the user is currently viewing in
-			// the message pane (but the cursor is elsewhere). Show the
-			// orange ▌ "active" indicator so they know where they are.
-			visible = append(visible, r.active)
-		case r.isThreadsRow && m.threadsActive && r.active != "":
-			// Threads view is the currently displayed view; mark the
-			// Threads row as active with the same orange indicator.
-			visible = append(visible, r.active)
-		case r.isActivityRow && m.activityActive && r.active != "":
-			// Activity view is the currently displayed view; mark the
-			// Activity row as active with the same orange indicator.
+			if open && r.cursorOnActive != "" {
+				visible = append(visible, r.cursorOnActive)
+			} else {
+				visible = append(visible, r.selected)
+			}
+		case open && r.active != "":
+			// This row is what the user is currently viewing in the
+			// message pane (but the cursor is elsewhere): the open
+			// channel, or the Threads or Activity view. Show the
+			// "active" indicator so they know where they are.
 			visible = append(visible, r.active)
 		case r.normal == "":
 			// Inter-section blank row -- emit a width-sized themed blank so
