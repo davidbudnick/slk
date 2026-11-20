@@ -241,19 +241,19 @@ func (s *SectionStore) OrderedSections() []*slk.SidebarSection {
 // includeInSidebar applies the render filter rules. Renderable types:
 // standard (always, even when empty — user intent), channels (default
 // catch-all), direct_messages (default DM bucket), stars (Slack's
-// Starred feature — only when non-empty, mirroring recent_apps so users
-// without starred conversations don't see an empty header). recent_apps is
-// only rendered when non-empty (slk has its own Apps logic for the
-// empty case). Everything else is hidden (slack_connect,
-// salesforce_records, agents, anything new).
+// Starred feature — only when non-empty, so users without starred
+// conversations don't see an empty header), recent_apps (the default
+// bucket for app DMs; Slack lists it with no channel IDs, and the
+// sidebar drops its header while no app DM is open). Everything else is
+// hidden (slack_connect, salesforce_records, agents, anything new).
 func includeInSidebar(sec *slk.SidebarSection) bool {
 	if sec.IsRedacted {
 		return false
 	}
 	switch sec.Type {
-	case "standard", "channels", "direct_messages":
+	case "standard", "channels", "direct_messages", "recent_apps":
 		return true
-	case "stars", "recent_apps":
+	case "stars":
 		return len(sec.ChannelIDs) > 0
 	default:
 		// slack_connect, salesforce_records, agents, anything new.

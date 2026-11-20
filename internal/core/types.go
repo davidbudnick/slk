@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"image/color"
 	"time"
 
 	"github.com/gammons/slk/internal/core/blocks"
@@ -196,6 +197,13 @@ type ReadState struct {
 	// reading is unverified against a live capture; see UnreadInfo's doc
 	// in internal/slack/client.go. Rendering gates it on HasUnread.
 	MentionCount int
+}
+
+// AvatarBadge is the presence mark drawn on the corner of a sidebar
+// avatar: a dot in Color, or a ring when Hollow. A nil Color draws none.
+type AvatarBadge struct {
+	Color  color.Color
+	Hollow bool
 }
 
 // ThreadSummary is one row in the Threads view: a thread the user is

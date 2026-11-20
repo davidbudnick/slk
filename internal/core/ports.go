@@ -471,6 +471,15 @@ type SixelAvatarService interface {
 	SixelAvatar(userID string) (key string, bytes []byte, ok bool)
 }
 
+// SidebarAvatarService is an AvatarService that can also draw the
+// sidebar's avatars. Optional: without it the sidebar keeps its glyphs.
+type SidebarAvatarService interface {
+	AvatarService
+	// SidebarAvatar is userID's small avatar with badge drawn on its
+	// corner, or "" while it isn't available.
+	SidebarAvatar(userID string, badge AvatarBadge) string
+}
+
 // ImageFetcher downloads and caches remote images for inline rendering
 // and keeps pre-encoded renders of them. *image.Fetcher implements it.
 //

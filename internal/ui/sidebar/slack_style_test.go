@@ -44,9 +44,13 @@ func TestSlackStyle_HeadersDotsAndSort(t *testing.T) {
 		t.Errorf("unread row lost its name")
 	}
 
+	if hdr := plain(rowFor(t, raw, "Must Read")); !strings.HasPrefix(hdr, "  Must Read") {
+		t.Errorf("header must start in the first column, as Slack's does: %q", hdr)
+	}
+
 	m.ToggleCollapse("Must Read")
-	if hdr := plain(rowFor(t, m.View(10, 40), "Must Read")); !strings.Contains(hdr, "▸") {
-		t.Errorf("collapsed header must keep ▸: %q", hdr)
+	if hdr := plain(rowFor(t, m.View(10, 40), "Must Read")); !strings.HasPrefix(hdr, "  Must Read ▸") {
+		t.Errorf("collapsed header must keep ▸, after its name: %q", hdr)
 	}
 }
 
