@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/gammons/slk/internal/core"
 	"github.com/gammons/slk/internal/ids"
 	"github.com/gammons/slk/internal/ui/wintree"
@@ -55,6 +57,31 @@ func TestCloseWindow_LastWindowToasts(t *testing.T) {
 	if out := a.statusbar.View(120); !strings.Contains(out, "Cannot close last window") {
 		t.Fatalf("expected 'Cannot close last window' toast:\n%s", out)
 	}
+}
+
+// :q is vi's: it closes a window, and from the last one quits slk.
+// Ctrl+w q (closeWindow) never quits.
+func TestCommandQ_QuitsFromTheLastWindow(t *testing.T) {
+	a := newWideTestApp(t)
+	_ = executeCommand(a, "vsp")
+	if cmd := executeCommand(a, "q"); a.wins.Len() != 1 || isQuit(cmd) {
+		t.Fatalf(":q with two windows: Len = %d, quit = %v; want one window closed and no quit", a.wins.Len(), isQuit(cmd))
+	}
+	if cmd := executeCommand(a, "q"); !isQuit(cmd) {
+		t.Fatal(":q on the last window did not quit")
+	}
+	if isQuit(a.closeWindow()) {
+		t.Error("Ctrl+w q on the last window quit")
+	}
+}
+
+// isQuit reports whether cmd is tea.Quit.
+func isQuit(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	_, ok := cmd().(tea.QuitMsg)
+	return ok
 }
 
 func TestCloseWindow_FocusFallsToNeighbor(t *testing.T) {

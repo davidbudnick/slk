@@ -44,7 +44,7 @@ var commands = map[string]commandFunc{
 	"delmarks":   cmdDelMarks,
 	"sp":         cmdSplit,
 	"vsp":        cmdVSplit,
-	"q":          cmdCloseWindow,
+	"q":          cmdQuit,
 	"only":       cmdOnlyWindow,
 	"on":         cmdOnlyWindow,
 	"activity":   cmdActivity,
@@ -130,8 +130,15 @@ func cmdHuddle(a *App, _ commandArgs) tea.Cmd {
 func cmdSplit(a *App, _ commandArgs) tea.Cmd  { return a.splitWindow(wintree.SplitStacked) }
 func cmdVSplit(a *App, _ commandArgs) tea.Cmd { return a.splitWindow(wintree.SplitSideBySide) }
 
-// cmdCloseWindow closes the focused window (never quits the app).
-func cmdCloseWindow(a *App, _ commandArgs) tea.Cmd { return a.closeWindow() }
+// cmdQuit is vi's :q: it closes the focused window, and from the last
+// one quits slk. An upload in progress refuses either, as closeWindow
+// does. Ctrl+w q stays a window command and never quits.
+func cmdQuit(a *App, _ commandArgs) tea.Cmd {
+	if a.wins.Len() > 1 || a.compose.Uploading() || a.threadCompose.Uploading() {
+		return a.closeWindow()
+	}
+	return tea.Quit
+}
 
 // cmdOnlyWindow closes all other windows.
 func cmdOnlyWindow(a *App, _ commandArgs) tea.Cmd {

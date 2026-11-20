@@ -56,7 +56,7 @@
 | `Ctrl+w v` / `:vsp` | Normal | Split the focused window into two, side by side |
 | `Ctrl+w h/j/k/l` | Normal | Focus the window in that direction |
 | `Ctrl+w w` | Normal | Cycle through windows |
-| `Ctrl+w q` / `:q` | Normal | Close the focused window (not the last one) |
+| `Ctrl+w q` / `:q` | Normal | Close the focused window. On the last one `Ctrl+w q` refuses and `:q` quits slk |
 | `Ctrl+w o` / `:only` (`:on`) | Normal | Close every other window |
 | `1`–`9` | Normal | Jump to workspace N |
 | `r` | Normal (message) | Open reaction picker |
