@@ -210,6 +210,14 @@ type AvatarBadge struct {
 	Hollow bool
 }
 
+// UnreadConversation is a conversation with something unread: Mentions
+// is the count its badge shows, 0 when it is only unread, and LatestTS
+// is its newest message.
+type UnreadConversation struct {
+	Mentions int
+	LatestTS string
+}
+
 // ThreadSummary is one row in the Threads view: a thread the user is
 // involved in (authored, replied to, or @-mentioned in). Computed from
 // the local cache; v1 has no Slack-side authoritative data.
