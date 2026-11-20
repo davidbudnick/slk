@@ -109,7 +109,8 @@ avatars = false             # true: each DM's and app's avatar in place of its g
                             # [appearance] show_avatars). A group DM shows the number
                             # of people in it on a square, and mention badges are
                             # drawn as pills with a gap between rows. channel_indent
-                            # = 2 puts the rows under the header's name, as Slack does
+                            # = 3 puts each row's icon under the header's name, as
+                            # Slack does, when headers carry a two-cell emoji
 active_only = false         # true: hide conversations with no activity in 30 days, in
                             # every section (Slack's "Active only"; unread ones stay)
 mouse_resize = false        # true: drag the sidebar's right border to resize it

@@ -113,3 +113,49 @@ func TestGetSidebar_OneImagePerPresence(t *testing.T) {
 		t.Errorf("sidebar avatar off kitty = %q, want empty", got)
 	}
 }
+
+// Someone whose avatar is not loaded gets the figure Slack gives a
+// person with no photo, with their presence on it, not a blank.
+func TestGetSidebarDefault_AFigureWithPresenceWhenNoAvatarIsLoaded(t *testing.T) {
+	cache, err := imgpkg.NewCache(t.TempDir(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := imgpkg.KittyOutput
+	defer func() { imgpkg.KittyOutput = saved }()
+	var sideCh bytes.Buffer
+	imgpkg.KittyOutput = &sideCh
+	green := imgcolor.NRGBA{G: 200, A: 255}
+
+	figure := defaultAvatar().(*image.NRGBA)
+	if got := figure.NRGBAAt(iconCanvas/2, int(defaultHeadY)); got != defaultAvatarFigure {
+		t.Errorf("head = %v, want the figure's %v", got, defaultAvatarFigure)
+	}
+	if got := figure.NRGBAAt(iconCanvas/2, iconCanvas-4); got != defaultAvatarFigure {
+		t.Errorf("shoulders = %v, want the figure's %v", got, defaultAvatarFigure)
+	}
+	if got := figure.NRGBAAt(4, 4); got != defaultAvatarFill {
+		t.Errorf("background = %v, want %v", got, defaultAvatarFill)
+	}
+
+	c := NewCache(imgpkg.NewFetcher(cache, http.DefaultClient), imgpkg.NewKittyRenderer(imgpkg.NewRegistry()), true)
+	if got := c.GetSidebar("U1", green, false); got != "" {
+		t.Fatalf("sidebar avatar before the avatar loaded = %q, want empty", got)
+	}
+	online := c.GetSidebarDefault(green, false)
+	if strings.Count(online, string(imgpkg.PlaceholderRune)) != SmallCols || sideCh.Len() == 0 {
+		t.Fatalf("default avatar = %q with %d upload bytes, want %d cells and an upload", online, sideCh.Len(), SmallCols)
+	}
+	uploaded := sideCh.Len()
+	if again := c.GetSidebarDefault(green, false); again != online || sideCh.Len() != uploaded {
+		t.Error("second call re-rendered or re-uploaded")
+	}
+	if away := c.GetSidebarDefault(green, true); away == "" || away == online {
+		t.Errorf("away default = %q, want its own image", away)
+	}
+
+	halfBlock := NewCache(imgpkg.NewFetcher(cache, http.DefaultClient), nil, false)
+	if got := halfBlock.GetSidebarDefault(green, false); got != "" {
+		t.Errorf("default avatar off kitty = %q, want empty", got)
+	}
+}

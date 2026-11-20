@@ -369,8 +369,11 @@ func emitKittyUpload(w io.Writer, id uint32, payload string, cols, rows int) err
 		}
 		sb.WriteString(forTerminal(fmt.Sprintf("\x1b_G%s;%s\x1b\\", hdr, payload[i:end])))
 	}
-	_, err := io.WriteString(w, sb.String())
-	return err
+	if _, err := io.WriteString(w, sb.String()); err != nil {
+		return err
+	}
+	noteHiddenUpload(id, payload, cols, rows)
+	return nil
 }
 
 func buildPlaceholderLines(id uint32, cells image.Point) []string {

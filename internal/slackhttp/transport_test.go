@@ -138,6 +138,39 @@ func TestBrowserTransport_DoesNotTouchNonSlackHosts(t *testing.T) {
 	}
 }
 
+// An image on a host that is not Slack's (a link preview's picture)
+// carries the browser's User-Agent, which some CDNs require, and none
+// of the headers that name Slack.
+func TestBrowserTransport_ImageOnAnotherHostCarriesOnlyTheUserAgent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+	recorder := &captureRT{wrapped: http.DefaultTransport}
+	client := &http.Client{Transport: &BrowserTransport{Inner: recorder, Dest: DestImage}}
+	req, err := http.NewRequest("GET", srv.URL+"/photo.jpg", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	resp.Body.Close()
+
+	if got := recorder.last.Header.Get("User-Agent"); got != UserAgent() {
+		t.Errorf("User-Agent = %q, want the browser's %q", got, UserAgent())
+	}
+	for _, h := range []string{"Referer", "Origin", "Accept", "Sec-Fetch-Site", "Sec-Ch-Ua", "Priority"} {
+		if got := recorder.last.Header.Get(h); got != "" {
+			t.Errorf("%s = %q on another host, want it unset", h, got)
+		}
+	}
+	if len(req.Header) != 0 {
+		t.Errorf("the caller's request was changed: %v", req.Header)
+	}
+}
+
 func TestBrowserTransport_DoesNotOverrideCallerHeaders(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)

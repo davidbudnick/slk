@@ -24,6 +24,8 @@ package ui
 
 import (
 	tea "charm.land/bubbletea/v2"
+
+	imgpkg "github.com/gammons/slk/internal/image"
 )
 
 // markFlushMsg fires after the mark debounce interval; see
@@ -35,6 +37,7 @@ var reduceFocus reducerFunc = func(a *App, msg tea.Msg) (tea.Cmd, bool) {
 	case tea.FocusMsg:
 		a.terminalFocused = true
 		a.focusEverReported = true
+		imgpkg.SetTerminalHidden(false)
 		// Not gated on autoMarkArmed: reaching this arm is itself the
 		// proof that arming waits for, and the user is by now looking
 		// at the channel. Catch-up — marks staged while blurred, or
@@ -46,6 +49,9 @@ var reduceFocus reducerFunc = func(a *App, msg tea.Msg) (tea.Cmd, bool) {
 
 	case tea.BlurMsg:
 		a.terminalFocused = false
+		// Inside tmux a blur can mean another window is up, and tmux
+		// drops image uploads from a pane that is out of view.
+		imgpkg.SetTerminalHidden(true)
 		// A blur proves focus reporting is wired up just as well as a
 		// focus does, and inside tmux it is the likelier first event.
 		a.focusEverReported = true

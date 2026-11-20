@@ -2700,6 +2700,22 @@ func (m *Model) sectionDisplayMeta(sectionKey string) (name, emoji string) {
 	return sectionKey, ""
 }
 
+// headerEmojiColumn is the width of the column Slack-style headers
+// keep for an emoji and the space after it: 0 unless some section has
+// one. A header without an emoji leaves it blank, so every section's
+// name starts in one column.
+func (m *Model) headerEmojiColumn() int {
+	if !m.slackStyle || !m.useSlackSections() {
+		return 0
+	}
+	for _, meta := range m.sectionsProvider.OrderedSlackSections() {
+		if meta.Emoji != "" {
+			return m.emojiCells() + 1
+		}
+	}
+	return 0
+}
+
 // renderSectionHeaderLabel returns the (normal, selected) label
 // strings for a section header. Headers show a triangle indicating
 // expand/collapse state and, when collapsed, the two aggregates
@@ -2749,6 +2765,13 @@ func (m *Model) renderSectionHeaderLabel(name string, width int, cursor string, 
 		}
 		emojiPrefixSelected = emojiPrefix
 		emojiCells = headerCells(emojiPrefix)
+	} else if pad := m.headerEmojiColumn(); pad > 0 {
+		// Slack fills this column with an icon on its built-in
+		// sections; left blank, their names still start where every
+		// other section's does.
+		emojiPrefix = strings.Repeat(" ", pad)
+		emojiPrefixSelected = emojiPrefix
+		emojiCells = pad
 	}
 
 	// Slack style starts the header at its emoji, as Slack does, and

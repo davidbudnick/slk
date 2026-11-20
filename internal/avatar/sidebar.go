@@ -49,6 +49,55 @@ func (c *Cache) GetSidebar(userID string, dot color.Color, hollow bool) string {
 	return c.placeSidebar(key, sidebarIcon(src, dot, hollow), SmallCols)
 }
 
+// GetSidebarDefault returns the sidebar avatar of someone whose own is
+// not loaded: a plain figure, as Slack gives someone with no photo,
+// with the presence dot GetSidebar draws. Empty off kitty.
+func (c *Cache) GetSidebarDefault(dot color.Color, hollow bool) string {
+	if !c.useKitty {
+		return ""
+	}
+	key := "avatar-default-sidebar"
+	if dot != nil {
+		key += fmt.Sprintf("-%s-%t", hexRGB(dot), hollow)
+	}
+	c.mu.RLock()
+	icon := c.sidebar[key]
+	c.mu.RUnlock()
+	if icon != "" {
+		return icon
+	}
+	return c.placeSidebar(key, sidebarIcon(defaultAvatar(), dot, hollow), SmallCols)
+}
+
+// The default avatar: a head and shoulders, centred, on a plain square.
+const (
+	defaultHeadY      = 37.0
+	defaultHeadRadius = 16.0
+	defaultBodyY      = 98.0
+	defaultBodyRadius = 36.0
+)
+
+var (
+	defaultAvatarFill   = color.NRGBA{R: 0x5c, G: 0x64, B: 0x73, A: 0xff}
+	defaultAvatarFigure = color.NRGBA{R: 0xd9, G: 0xdd, B: 0xe3, A: 0xff}
+)
+
+// defaultAvatar draws the figure shown for someone with no avatar.
+func defaultAvatar() image.Image {
+	dst := image.NewNRGBA(image.Rect(0, 0, iconCanvas, iconCanvas))
+	for y := 0; y < iconCanvas; y++ {
+		for x := 0; x < iconCanvas; x++ {
+			dx, fy := float64(x)+0.5-iconCanvas/2, float64(y)+0.5
+			px := defaultAvatarFill
+			if math.Hypot(dx, fy-defaultHeadY) <= defaultHeadRadius || math.Hypot(dx, fy-defaultBodyY) <= defaultBodyRadius {
+				px = defaultAvatarFigure
+			}
+			dst.SetNRGBA(x, y, px)
+		}
+	}
+	return dst
+}
+
 // placeSidebar uploads img under key and returns its placement, cols
 // cells wide on one sidebar row, remembering it under key.
 func (c *Cache) placeSidebar(key string, img image.Image, cols int) string {
