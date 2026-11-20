@@ -68,6 +68,7 @@ type SlackAPI interface {
 	UploadToURL(ctx context.Context, params slack.UploadToURLParameters) error
 	CompleteUploadExternalContext(ctx context.Context, params slack.CompleteUploadExternalParameters) (*slack.CompleteUploadExternalResponse, error)
 	OpenConversationContext(ctx context.Context, params *slack.OpenConversationParameters) (*slack.Channel, bool, bool, error)
+	CloseConversationContext(ctx context.Context, channelID string) (bool, bool, error)
 	GetConversationInfoContext(ctx context.Context, input *slack.GetConversationInfoInput) (*slack.Channel, error)
 }
 
@@ -1178,6 +1179,17 @@ func (c *Client) OpenConversation(ctx context.Context, userIDs []string) (string
 		return "", false, fmt.Errorf("opening conversation: %w", err)
 	}
 	return ch.ID, alreadyOpen, nil
+}
+
+// CloseConversation closes a direct message or group DM, as the "x" on
+// its row in Slack's sidebar does: it leaves the user's open list on
+// every client and comes back when someone next writes in it. Closing
+// one that is already closed is not an error.
+func (c *Client) CloseConversation(ctx context.Context, channelID string) error {
+	if _, _, err := c.api.CloseConversationContext(ctx, channelID); err != nil {
+		return fmt.Errorf("closing conversation: %w", err)
+	}
+	return nil
 }
 
 // UploadFile uploads one file and shares it as a Slack message. It is

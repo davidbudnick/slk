@@ -344,6 +344,9 @@ func handleNormalMode(a *App, msg tea.KeyMsg) tea.Cmd {
 		return a.beginDeleteOfSelected()
 
 	case key.Matches(msg, a.keys.RemovePreview):
+		if a.focusedPanel == PanelSidebar {
+			return a.closeSelectedConversation()
+		}
 		return a.removePreviewOfSelected()
 
 	case key.Matches(msg, a.keys.OpenPreview):

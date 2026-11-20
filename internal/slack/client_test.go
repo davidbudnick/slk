@@ -155,6 +155,7 @@ type mockSlackAPI struct {
 	completeUploadExternalContextFn func(ctx context.Context, params slack.CompleteUploadExternalParameters) (*slack.CompleteUploadExternalResponse, error)
 	getUsersInConversationContextFn func(ctx context.Context, params *slack.GetUsersInConversationParameters) ([]string, string, error)
 	openConversationContextFn       func(ctx context.Context, params *slack.OpenConversationParameters) (*slack.Channel, bool, bool, error)
+	closeConversationContextFn      func(ctx context.Context, channelID string) (bool, bool, error)
 	searchMessagesFn                func(ctx context.Context, query string, params slack.SearchParameters) (*slack.SearchMessages, error)
 	getUserGroupsContextFn          func(ctx context.Context, options ...slack.GetUserGroupsOption) ([]slack.UserGroup, error)
 }
@@ -2630,6 +2631,37 @@ func (m *mockSlackAPI) OpenConversationContext(ctx context.Context, params *slac
 		return m.openConversationContextFn(ctx, params)
 	}
 	return nil, false, false, nil
+}
+
+func (m *mockSlackAPI) CloseConversationContext(ctx context.Context, channelID string) (bool, bool, error) {
+	if m.closeConversationContextFn != nil {
+		return m.closeConversationContextFn(ctx, channelID)
+	}
+	return false, false, nil
+}
+
+func TestCloseConversation(t *testing.T) {
+	var closed string
+	mock := &mockSlackAPI{
+		closeConversationContextFn: func(_ context.Context, channelID string) (bool, bool, error) {
+			closed = channelID
+			return false, true, nil
+		},
+	}
+	c := &Client{api: mock}
+	if err := c.CloseConversation(context.Background(), "D456"); err != nil {
+		t.Fatalf("closing an already-closed conversation: %v", err)
+	}
+	if closed != "D456" {
+		t.Errorf("closed %q; want D456", closed)
+	}
+
+	mock.closeConversationContextFn = func(context.Context, string) (bool, bool, error) {
+		return false, false, errors.New("channel_not_found")
+	}
+	if err := c.CloseConversation(context.Background(), "D456"); err == nil || !strings.Contains(err.Error(), "channel_not_found") {
+		t.Errorf("err = %v; want Slack's error wrapped", err)
+	}
 }
 
 func (m *mockSlackAPI) GetConversationInfoContext(ctx context.Context, input *slack.GetConversationInfoInput) (*slack.Channel, error) {

@@ -98,6 +98,15 @@ var reduceWorkspace reducerFunc = func(a *App, msg tea.Msg) (tea.Cmd, bool) {
 		// App.Update only mutates the active workspace's UI models.
 		return nil, true
 
+	case ConversationClosedMsg:
+		if m.TeamID == a.activeTeamID {
+			a.removeClosedConversation(m.ChannelID)
+		}
+		return nil, true
+
+	case ConversationCloseFailedMsg:
+		return a.conversationCloseFailed(m), true
+
 	case SectionsRefreshedMsg:
 		if m.TeamID == a.activeTeamID {
 			a.SetChannels(m.Channels)

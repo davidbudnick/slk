@@ -1219,6 +1219,7 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.presence,
 		a.preview,
 		reduceSidebarResize,
+		reduceSidebarHover,
 		a.drag,
 		a.typing,
 		a.bootstrap,
@@ -4184,6 +4185,9 @@ func (a *App) View() tea.View {
 	v := tea.NewView(screen)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
+	if a.sidebar.TracksHover() {
+		v.MouseMode = tea.MouseModeAllMotion
+	}
 	// Ask the terminal to report focus gain/loss so reduceFocus can keep
 	// a.terminalFocused current. Bubble Tea diffs this against the
 	// previous frame and only emits the enable sequence on change.

@@ -276,6 +276,11 @@ type ChannelService interface {
 	// or ChannelJoinFailedMsg).
 	Join(channelID ids.ChannelID, channelName string) Msg
 
+	// Close sends conversations.close for a DM or group DM, taking it
+	// out of the sidebar on every client of the user. Returns a Msg
+	// (typically ConversationClosedMsg or ConversationCloseFailedMsg).
+	Close(channelID ids.ChannelID, channelName string) Msg
+
 	// RecordVisit persists a visit to channelID (SQLite write +
 	// WorkspaceContext last-visited map update). Fired once per
 	// ChannelSelectedMsg regardless of FromHistory.
