@@ -81,10 +81,11 @@ func TestFinalizeSixelView_NativeKittyLeavesPlaceholders(t *testing.T) {
 	}
 }
 
-// Under a modal, DimmedOverlay blanks the backdrop's placeholders and
-// keeps the modal's own (the reaction picker's emoji), so only those
-// are painted. The sixel rule that withholds every placement while an
-// overlay is open must not apply here.
+// Under a modal, DimmedOverlay keeps the backdrop's placeholders, with
+// their image IDs, beside the modal's own (the reaction picker's
+// emoji), so both are painted: the images behind a modal stay up. The
+// sixel rule that withholds every placement while an overlay is open
+// must not apply here.
 func TestFinalizeSixelView_EmulatedKittyUnderModal(t *testing.T) {
 	const w, h = 30, 5
 	a, _, _ := emulatedKittyApp(t, w, h, imgpkg.KittyEmulated)
@@ -96,11 +97,22 @@ func TestFinalizeSixelView_EmulatedKittyUnderModal(t *testing.T) {
 	screen := overlay.DimmedOverlay(w, h, strings.TrimSuffix(bg.String(), "\n"), box, 0.5)
 
 	_, placements := a.resolveKittyFrame(screen)
-	if len(placements) != 1 || !strings.Contains(string(placements[0].Bytes), "i=42,") {
-		t.Fatalf("placements = %+v, want only the modal's image 42", placements)
+	modal, backdrop := 0, 0
+	for _, p := range placements {
+		switch {
+		case strings.Contains(string(p.Bytes), "i=42,"):
+			modal++
+		case strings.Contains(string(p.Bytes), "i=77,"):
+			backdrop++
+		default:
+			t.Errorf("placement of an image that is on neither layer: %q", p.Bytes)
+		}
+		if p.Guard == "" {
+			t.Errorf("placement %q has no guard", p.Key)
+		}
 	}
-	if placements[0].Guard == "" {
-		t.Fatal("placement has no guard")
+	if modal != 1 || backdrop == 0 {
+		t.Fatalf("%d placements of the modal's image and %d of the backdrop's, want 1 and the backdrop's kept", modal, backdrop)
 	}
 }
 

@@ -21,14 +21,13 @@ var kittyPlaceholderPrefix = string(image.PlaceholderRune)
 // darkened by dimPercent (0.0-1.0), then the modal box is placed centered
 // on top by copying its cells.
 //
-// Cells whose content carries the kitty unicode-placeholder rune are
-// blanked: their FG is a 24-bit encoding of an image ID (not a visual
+// Cells whose content carries the kitty unicode-placeholder rune keep
+// their FG: it is a 24-bit encoding of an image ID (not a visual
 // color), so darkening it would mutate the ID and surface a different
-// image — see internal/image/kitty.go. Replacing the placeholder rune
-// with a space drops the kitty placement for the duration of the
-// overlay; the image data stays uploaded and the next non-overlay
-// frame re-emits the placeholder cells, re-creating the placement
-// without any image-state plumbing. Issue #18.
+// image — see internal/image/kitty.go, and issue #18. Only their
+// background is dimmed, so the image stays where it was, at its own
+// brightness, while a modal is open. Blanking the cells instead emptied
+// every avatar, emoji and picture behind the modal.
 func DimmedOverlay(width, height int, background string, box string, dimPercent float64) string {
 	// Step 1: Render background to canvas and dim all cells.
 	//
@@ -54,19 +53,13 @@ func DimmedOverlay(width, height int, background string, box string, dimPercent 
 			if cell == nil || cell.Width == 0 {
 				continue
 			}
-			if strings.HasPrefix(cell.Content, kittyPlaceholderPrefix) {
-				// Drop the kitty placement at this cell. Clear the FG
-				// (was image-ID-as-RGB, not a real color) and let the
-				// normal dim path tint any BG so the region blends
-				// into the rest of the dimmed background.
-				cell.Content = " "
-				cell.Width = 1
-				cell.Style.Fg = nil
-			}
+			placement := strings.HasPrefix(cell.Content, kittyPlaceholderPrefix)
 			if cell.Style.Bg != nil {
 				cell.Style.Bg = lipgloss.Darken(cell.Style.Bg, dimPercent)
 			}
-			if cell.Style.Fg != nil {
+			// A placement's FG is its image's ID, not a color: left
+			// as it is, the image stays where it was.
+			if cell.Style.Fg != nil && !placement {
 				cell.Style.Fg = lipgloss.Darken(cell.Style.Fg, dimPercent)
 			}
 			// Intentionally NO canvas.SetCell here — see comment above.
