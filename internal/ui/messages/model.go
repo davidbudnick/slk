@@ -246,6 +246,9 @@ type Model struct {
 	// put the username on the same line as the message, remove vertical
 	// separation between messages.
 	compact bool
+	// slackStyle groups an author's messages and anchors a short
+	// conversation to the bottom (SetSlackStyle).
+	slackStyle bool
 }
 
 // SetFocused records whether the messages pane currently holds user focus
@@ -718,13 +721,13 @@ func (m *Model) SetChannelType(chType string) {
 }
 
 // ChannelGlyph returns the prefix glyph for a channel type: "◆" for
-// "private", "●" for "dm" and "group_dm", "#" otherwise. Used by the
-// messages-pane header and the thread breadcrumb.
+// "private", "●" for "dm", "group_dm" and "app", "#" otherwise. Used by
+// the messages-pane header and the thread breadcrumb.
 func ChannelGlyph(chType string) string {
 	switch chType {
 	case "private":
 		return "\u25c6" // ◆
-	case "dm", "group_dm":
+	case "dm", "group_dm", "app":
 		return "\u25cf" // ●
 	default:
 		return "#"
@@ -1367,6 +1370,54 @@ func (m *Model) SetCompact(enabled bool) {
 	m.dirty()
 }
 
+// SetSlackStyle lays the pane out as Slack does ([appearance]
+// slack_style): an author's messages sent within a few minutes share
+// one header, and a conversation shorter than the pane sits at its
+// bottom, by the input.
+func (m *Model) SetSlackStyle(enabled bool) {
+	if m.slackStyle == enabled {
+		return
+	}
+	m.slackStyle = enabled
+	m.list.SetAnchorBottom(enabled)
+	m.dropCache()
+	m.dirty()
+}
+
+// groupWindow is how long after a message another by the same author
+// still joins its group.
+const groupWindow = 5 * time.Minute
+
+// continuesGroup reports whether message i is drawn under the header of
+// the message before it: Slack style, the same author within
+// groupWindow on the same day, with nothing drawn between the two, and
+// a message that has a body and needs no header of its own.
+func (m *Model) continuesGroup(i int) bool {
+	if !m.slackStyle || m.compact || i <= 0 || i >= len(m.messages) {
+		return false
+	}
+	prev, msg := HuddleView(m.messages[i-1], m.userNames), HuddleView(m.messages[i], m.userNames)
+	switch {
+	case msg.UserID == "" || msg.UserID != prev.UserID:
+		return false
+	case msg.IsEdited || msg.Ephemeral || prev.Ephemeral || msg.Subtype == "thread_broadcast":
+		return false
+	case core.IsSystemNoticeSubtype(msg.Subtype) || core.IsSystemNoticeSubtype(prev.Subtype):
+		return false
+	case BlocksCarryBody(msg) || strings.TrimSpace(MessageTextSource(msg)) == "":
+		return false
+	case m.lastReadTS != "" && prev.TS <= m.lastReadTS && msg.TS > m.lastReadTS:
+		return false
+	}
+	at, ok := timeFromTS(msg.TS)
+	before, okPrev := timeFromTS(prev.TS)
+	if !ok || !okPrev || at.Format("2006-01-02") != before.Format("2006-01-02") {
+		return false
+	}
+	gap := at.Sub(before)
+	return gap >= 0 && gap < groupWindow
+}
+
 // SetCurrentUser records the authenticated user ID so UpdateReaction can
 // flag the current user's own reactions (HasReacted) correctly.
 func (m *Model) SetCurrentUser(userID string) {
@@ -1847,6 +1898,14 @@ func (m *Model) renderMessageEntry(i int, width int, cs cacheStyles, stats *entr
 	if !m.compact && m.avatarFn != nil {
 		opt.Avatar = m.avatarFn(msg.UserID)
 		opt.AvatarSixelKey, opt.AvatarSixel = SixelAvatar(m.sixelAvatarFn, msg.UserID)
+	}
+	if m.continuesGroup(i) {
+		opt.Continuation = true
+		if opt.Avatar != "" {
+			// One blank row the avatar's width keeps the body in its column.
+			opt.Avatar = lipgloss.NewStyle().Background(styles.Background).Render(strings.Repeat(" ", lipgloss.Width(strings.SplitN(opt.Avatar, "\n", 2)[0])))
+			opt.AvatarSixelKey, opt.AvatarSixel = "", nil
+		}
 	}
 	r := RenderMessage(msg, width, m.renderContext(), opt)
 	// The channel pane's kitty upload order: blocks, attachments, then

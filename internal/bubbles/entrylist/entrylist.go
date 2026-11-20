@@ -164,8 +164,13 @@ type Model struct {
 	live    int // entries lookups may see; -1 = all (see KeepLookups)
 	offsets []int
 	total   int
-	ids     map[string]int
-	width   int
+	// anchorBottom puts content shorter than the window at its bottom
+	// (SetAnchorBottom); lead is the blank lines above it that do so,
+	// counted in offsets and total like an entry's lines.
+	anchorBottom bool
+	lead         int
+	ids          map[string]int
+	width        int
 
 	height, prevHeight int
 	yOffset            int
@@ -288,6 +293,21 @@ func (m *Model) SetHeight(h, sel int) {
 		m.MarkSnapped(sel)
 	}
 	m.prevHeight, m.height = m.height, h
+	if m.anchorBottom && m.prevHeight != h {
+		m.recomputeOffsets()
+	}
+}
+
+// SetAnchorBottom draws content shorter than the window at the window's
+// bottom, under blank lines, as a chat does: the newest line sits by
+// the input. Off, such content starts at the top.
+func (m *Model) SetAnchorBottom(on bool) {
+	if m.anchorBottom == on {
+		return
+	}
+	m.anchorBottom = on
+	m.recomputeOffsets()
+	m.version++
 }
 
 // SetEntries replaces the entries, rendered at width. The list takes
@@ -442,8 +462,16 @@ func (m *Model) recompute() {
 }
 
 func (m *Model) recomputeOffsets() {
+	content := 0
+	for i := range m.entries {
+		content += len(m.entries[i].Lines)
+	}
+	m.lead = 0
+	if m.anchorBottom && content > 0 && content < m.height {
+		m.lead = m.height - content
+	}
 	m.offsets = m.offsets[:0]
-	off := 0
+	off := m.lead
 	for i := range m.entries {
 		m.offsets = append(m.offsets, off)
 		off += len(m.entries[i].Lines)

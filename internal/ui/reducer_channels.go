@@ -334,6 +334,7 @@ func (a *App) retargetActiveChannel(id, name, chType string) tea.Cmd {
 	dropCmd := a.dropInsertIfComposeDisabled()
 	a.typingOut.ResetThrottle() // reset typing throttle for new channel
 	a.compose.SetChannel(name)
+	a.compose.SetDirect(chType == "dm" || chType == "group_dm" || chType == "app")
 	a.compose.SetActiveChannel(id)
 	a.compose.SetDraftContext(a.activeTeamID, id, "")
 	// Fire the membership fetcher on a fresh goroutine so it can't

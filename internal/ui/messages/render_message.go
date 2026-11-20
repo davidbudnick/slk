@@ -75,6 +75,13 @@ type RenderOptions struct {
 	SixelRows       bool // record sixel rows (both panes)
 	stats           *entryPerfStats
 
+	// Continuation draws the message with no author header, under the
+	// header of the same author's message before it, as Slack groups
+	// messages sent within a few minutes. The caller passes it only for
+	// a message with a body, out of compact mode, and passes a blank
+	// Avatar to keep the body in the avatar's column.
+	Continuation bool
+
 	// BodyOnly draws only the message body (the draft preview): no
 	// labels, header, reply line, blocks, attachments or reactions;
 	// the header never joins the body, even in compact mode. Avatar is
@@ -386,7 +393,12 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 		header = buf.String()
 	}
 
-	preAttachmentRows += lipgloss.Height(header)
+	// A message under its author's earlier header has none of its own.
+	if opt.Continuation {
+		header = ""
+	} else {
+		preAttachmentRows += lipgloss.Height(header)
+	}
 
 	var bodyT0 time.Time
 	if stats != nil {
@@ -426,7 +438,7 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 
 	if hasBody {
 		preAttachmentRows += lipgloss.Height(text) // wrapped body text
-		if headerOnSeparateLine {
+		if headerOnSeparateLine && !opt.Continuation {
 			bodyRow = "\n"
 		}
 		bodyRow = bodyRow + text
