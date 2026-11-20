@@ -441,12 +441,14 @@ type App struct {
 	sixelAvatarFn messages.SixelAvatarFunc // nil unless the service draws sixel avatars
 	replyAvatarFn messages.AvatarFunc
 	replyAvatars  bool
-	imageCtx      imgrender.ImageContext
-	emojiCtx      messages.EmojiContext
-	emojiCustoms  map[string]string
-	channelNames  map[string]string // UI-owned mention names, independent of sidebar membership
-	userGroups    map[string]string
-	selfGroups    map[string]bool // usergroups the current user is in
+	// messageSlackStyle is [appearance] slack_style, for new windows.
+	messageSlackStyle bool
+	imageCtx          imgrender.ImageContext
+	emojiCtx          messages.EmojiContext
+	emojiCustoms      map[string]string
+	channelNames      map[string]string // UI-owned mention names, independent of sidebar membership
+	userGroups        map[string]string
+	selfGroups        map[string]bool // usergroups the current user is in
 
 	// buildInfo is the build identity :version shows: version and short
 	// commit (version.Short). Set once at startup by main.
@@ -3250,6 +3252,16 @@ func (a *App) SetReplyAvatars(enabled bool) {
 	a.replyAvatars = enabled
 	for _, m := range a.allWinModels() {
 		m.SetReplyAvatarFunc(a.replyAvatarFunc())
+	}
+}
+
+// SetMessageSlackStyle lays every message pane out as Slack does
+// ([appearance] slack_style): grouped messages, and a short
+// conversation at the bottom of its pane.
+func (a *App) SetMessageSlackStyle(enabled bool) {
+	a.messageSlackStyle = enabled
+	for _, m := range a.allWinModels() {
+		m.SetSlackStyle(enabled)
 	}
 }
 

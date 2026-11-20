@@ -168,6 +168,9 @@ func (m *Model) slice(cursor int, lines func(int) []string, withHits bool) ([]st
 	rows := make([]string, 0, max(m.height, 0))
 	var vis []Visible
 	top, bottom := m.yOffset, m.yOffset+m.height
+	for line := top; line < min(m.lead, bottom); line++ {
+		rows = append(rows, m.spacerRow())
+	}
 	for i := range m.entries {
 		if len(rows) >= m.height {
 			break

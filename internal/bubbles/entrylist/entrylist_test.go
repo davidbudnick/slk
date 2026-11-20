@@ -636,3 +636,54 @@ func TestHoldBottomSurvivesAScrollDown(t *testing.T) {
 		t.Fatalf("y %d, want 33", m.YOffset())
 	}
 }
+
+// With SetAnchorBottom, content shorter than the window sits at the
+// window's bottom, as a chat's newest line sits by the input. The blank
+// lines above count as content, so hits and lookups land on the rows
+// the entries are drawn on.
+func TestAnchorBottom_ShortContentSitsAtTheBottom(t *testing.T) {
+	m := list(t, 2, 2)
+	m.entries[1].Hits = []Hit{{RowStart: 0, RowEnd: 1, ColStart: 0, ColEnd: 5, Kind: 1}}
+	f := m.Layout(1, nil)
+	if got := strip(f.Rows); len(got) != 4 || got[0] == "" {
+		t.Fatalf("default: rows %q, want the four content rows from the top", got)
+	}
+
+	m.SetAnchorBottom(true)
+	f = m.Layout(1, nil)
+	got := strip(f.Rows)
+	if len(got) != 10 {
+		t.Fatalf("anchored: %d rows, want the window's 10", len(got))
+	}
+	for i, row := range got {
+		if blank := row == ""; blank != (i < 6) {
+			t.Errorf("row %d = %q, want six blank rows then the content", i, row)
+		}
+	}
+	if m.Total() != 10 || fmt.Sprint(m.Offsets()) != "[6 8]" {
+		t.Errorf("total %d offsets %v, want 10 and [6 8]", m.Total(), m.Offsets())
+	}
+	if f.Visible[0].Row != 6 || f.Visible[1].Row != 8 {
+		t.Errorf("entries drawn at rows %d and %d, want 6 and 8", f.Visible[0].Row, f.Visible[1].Row)
+	}
+	if h, ok := m.HitTest(1, 8, 2); !ok || h.Ref != 1 {
+		t.Errorf("hit at the second entry's first row = %+v, %v", h, ok)
+	}
+	if _, _, ok := m.EntryAt(m.AbsLine(2)); ok {
+		t.Error("a blank row above the content resolves to an entry")
+	}
+	if i, _, ok := m.EntryAt(m.AbsLine(9)); !ok || i != 1 {
+		t.Errorf("last row resolves to entry %d, %v; want 1", i, ok)
+	}
+
+	// Content that fills the window is laid out as before.
+	m.SetHeight(3, 1)
+	if m.Total() != 4 || fmt.Sprint(m.Offsets()) != "[0 2]" {
+		t.Errorf("taller than the window: total %d offsets %v, want 4 and [0 2]", m.Total(), m.Offsets())
+	}
+	m.SetHeight(10, 1)
+	m.SetAnchorBottom(false)
+	if got := strip(m.Layout(1, nil).Rows); len(got) != 4 {
+		t.Errorf("anchor off: %d rows, want the content's 4", len(got))
+	}
+}
