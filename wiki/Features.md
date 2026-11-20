@@ -124,6 +124,7 @@ See [[Terminal Compatibility|Terminal-Compatibility]] for which protocol your te
 - One row is marked as open: the Threads or Activity row while that view is up, else the open conversation's
 - With `slack_style`, Channels, Direct messages and Apps carry Slack's icon where a custom section has its emoji (with `avatars`; otherwise the column is left blank), so every section's name starts in one column. Your DM with yourself is marked "you"
 - With `avatars`, a channel's `#` and a private channel's lock are drawn as images in the avatar's cells, so the icon column lines up whatever the rows are: avatars, group squares, channels
+- Avatars, emoji and pictures stay up behind an open dialog (the reaction picker, the finder): only text and backgrounds are dimmed
 - Images keep their proportions in their cells. A cell is rarely exactly twice as tall as wide, and an image stretched over its cells came out taller than wide (9% on 17x37 px cells), which showed on every emoji and avatar
 - With `avatars`, a DM whose avatar is not loaded shows a plain figure with the peer's presence, as Slack does for someone with no photo
 - Two slk in one terminal (two tmux windows) keep their own images: kitty image IDs start at a random point per run
