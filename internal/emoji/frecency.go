@@ -8,13 +8,38 @@ import (
 	slktext "github.com/gammons/slk/internal/text"
 )
 
-// Frecency ranks the emoji the user has used, most frecent first (the
-// order the frecent_emoji cache table returns them in: use count
-// discounted by days since last use). Names are as recorded, which is
-// Slack's canonical short name (CanonicalSlackName). The zero value
-// ranks nothing.
+// Frecency ranks the emoji the user has used, best first: by Slack's
+// own use counts when slk has them, else in the order the
+// frecent_emoji cache table returns them (use count discounted by days
+// since last use). Names are as recorded, which is Slack's canonical
+// short name (CanonicalSlackName). The zero value ranks nothing.
 type Frecency struct {
 	rank map[string]int
+	// frequent is the part of the history Slack counts as frequently
+	// used, which leads a picker's matches ahead of the rest of it.
+	// Nil means the whole history leads.
+	frequent map[string]bool
+}
+
+// WithFrequent returns f with names as its frequently used emoji. No
+// names leaves f as it is: the whole history leads.
+func (f Frecency) WithFrequent(names []string) Frecency {
+	if len(names) == 0 {
+		return f
+	}
+	f.frequent = make(map[string]bool, len(names))
+	for _, n := range names {
+		f.frequent[n] = true
+	}
+	return f
+}
+
+// leads reports whether a ranked emoji is one of the frequently used.
+func (f Frecency) leads(name string, customs map[string]string) bool {
+	if f.frequent == nil {
+		return true
+	}
+	return f.frequent[name] || f.frequent[CanonicalSlackName(name, customs)]
 }
 
 // NewFrecency builds a Frecency from names in most-to-least frecent
@@ -62,8 +87,11 @@ func (f Frecency) Rank(name string, customs map[string]string) (int, bool) {
 
 // MatchOptions tunes Match for one picker.
 type MatchOptions struct {
-	// Substring also matches names that contain the query, after
-	// every name that starts with it.
+	// Words also matches names in which a later word starts with the
+	// query ("ez" finds pepe_ez but not geez), as Slack's autocomplete
+	// does.
+	Words bool
+	// Substring also matches names that contain the query anywhere.
 	Substring bool
 	// Limit caps the result; 0 means no cap.
 	Limit int
@@ -74,16 +102,21 @@ type MatchOptions struct {
 }
 
 // Match returns the entries whose name matches query (case- and
-// accent-insensitive, via text.Fold), in the order an emoji picker
-// shows them:
+// accent-insensitive, via text.Fold), in the order Slack's emoji
+// autocomplete lists them:
 //
-//  1. emoji the user has used whose name starts with query, most
-//     frecent first;
-//  2. with Substring, used emoji whose name contains query, most
-//     frecent first;
-//  3. every other name that starts with query, in entries' order;
-//  4. with Substring, every other name that contains query.
+//  1. the user's frequently used emoji whose name starts with query,
+//     and the emoji named exactly query if they have used it, best
+//     ranked first;
+//  2. their frequently used emoji that match further in (see Words
+//     and Substring), best ranked first;
+//  3. the rest of their history, in the same two steps;
+//  4. every other name that starts with query, in entries' order;
+//  5. every other name that matches further in, in entries' order.
 //
+// Slack ranks the emoji a user has never used on its servers, by what
+// slk cannot see; entries' order stands in for that. When the history
+// names no frequently used emoji, all of it counts as frequently used.
 // A used emoji appears once even when several of its aliases match
 // (the first match in that order wins), so "+1" and "thumbsup" do not
 // fill two rows. An empty query matches everything. entries is
@@ -92,44 +125,51 @@ type MatchOptions struct {
 func Match[E any](entries []E, name func(E) string, query string, opt MatchOptions) []E {
 	q := slktext.Fold(query)
 	type used struct {
-		entry     E
-		substring bool
-		rank      int
-		pos       int
+		entry E
+		tier  int
+		rank  int
+		pos   int
 	}
 	var usedHits []used
-	var prefix, substring []E
+	var prefix, inside []E
 	limit := opt.Limit
 	for i, e := range entries {
 		n := name(e)
 		folded := slktext.Fold(n)
 		isPrefix := strings.HasPrefix(folded, q)
-		if !isPrefix && (!opt.Substring || !strings.Contains(folded, q)) {
+		if !isPrefix && !(opt.Words && slktext.HasWordPrefix(folded, q)) && !(opt.Substring && strings.Contains(folded, q)) {
 			continue
 		}
 		if rank, ok := opt.Frecency.Rank(n, opt.Customs); ok {
-			usedHits = append(usedHits, used{entry: e, substring: !isPrefix, rank: rank, pos: i})
+			tier := 0
+			if !opt.Frecency.leads(n, opt.Customs) && folded != q {
+				tier = 2
+			}
+			if !isPrefix {
+				tier++
+			}
+			usedHits = append(usedHits, used{entry: e, tier: tier, rank: rank, pos: i})
 			continue
 		}
 		// The unused tiers only ever show their first limit entries.
 		if isPrefix && (limit == 0 || len(prefix) < limit) {
 			prefix = append(prefix, e)
-		} else if !isPrefix && (limit == 0 || len(substring) < limit) {
-			substring = append(substring, e)
+		} else if !isPrefix && (limit == 0 || len(inside) < limit) {
+			inside = append(inside, e)
 		}
 	}
 
 	sort.Slice(usedHits, func(i, j int) bool {
 		a, b := usedHits[i], usedHits[j]
-		if a.substring != b.substring {
-			return !a.substring
+		if a.tier != b.tier {
+			return a.tier < b.tier
 		}
 		if a.rank != b.rank {
 			return a.rank < b.rank
 		}
 		return a.pos < b.pos
 	})
-	out := make([]E, 0, len(usedHits)+len(prefix)+len(substring))
+	out := make([]E, 0, len(usedHits)+len(prefix)+len(inside))
 	seen := make(map[int]bool, len(usedHits))
 	for _, h := range usedHits {
 		if seen[h.rank] {
@@ -139,7 +179,7 @@ func Match[E any](entries []E, name func(E) string, query string, opt MatchOptio
 		out = append(out, h.entry)
 	}
 	out = append(out, prefix...)
-	out = append(out, substring...)
+	out = append(out, inside...)
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}

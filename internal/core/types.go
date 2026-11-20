@@ -145,6 +145,10 @@ type ChannelFinderItem struct {
 type EmojiEntry struct {
 	Name    string // e.g. "thumbsup"
 	Unicode string // e.g. "\U0001f44d"
+	// Frequent marks an entry of the user's emoji history that Slack
+	// counts among their frequently used. When no entry of a history
+	// is marked, all of it is treated so.
+	Frequent bool
 }
 
 // PendingAttachment is a file (or in-memory image) waiting to be

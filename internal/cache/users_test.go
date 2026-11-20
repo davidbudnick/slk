@@ -191,3 +191,21 @@ func TestUserRealNameSurvivesWritesWithoutOne(t *testing.T) {
 		t.Errorf("ListUsers real names = %v; want U1 Ann Lee-Park and U2 Bo Ito", listed)
 	}
 }
+
+func TestEmojiUseCounts(t *testing.T) {
+	db := setupDBWithWorkspace(t)
+	defer db.Close()
+	counts, err := db.EmojiUseCounts()
+	if err != nil || len(counts) != 0 {
+		t.Fatalf("empty history: counts = %v, err = %v", counts, err)
+	}
+	for _, name := range []string{"tada", "pepe_ez", "tada", "tada"} {
+		if err := db.RecordEmojiUse(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	counts, err = db.EmojiUseCounts()
+	if err != nil || len(counts) != 2 || counts["tada"] != 3 || counts["pepe_ez"] != 1 {
+		t.Errorf("counts = %v, err = %v; want tada 3 and pepe_ez 1", counts, err)
+	}
+}

@@ -23,6 +23,7 @@ func workspace() []core.SlashCommand {
 		{Name: "/msg", Usage: "@user [your message]", Type: core.SlashCommandCore},
 		{Name: "/halp", Usage: "[description of issue]", Desc: "Raise a request", Type: core.SlashCommandApp, AppName: "Atlassian Assist"},
 		{Name: "/attach", Usage: "[path]", Desc: "Attach a file from your computer", Type: core.SlashCommandLocal},
+		{Name: "/challenge", Desc: "Challenge a player", Type: core.SlashCommandApp, AppName: "Wotscore"},
 		{Name: "not-a-command"},
 	}
 }
@@ -48,7 +49,7 @@ func names(list []core.SlashCommand) string {
 // each group by name. An alias is not listed: it still runs when typed.
 func TestOpen_ListsByKindThenName(t *testing.T) {
 	m := opened(t, workspace())
-	if got, want := names(m.Filtered()), "/attach /msg /shrug /halp /hangout /soc-handover"; got != want {
+	if got, want := names(m.Filtered()), "/attach /msg /shrug /challenge /halp /hangout /soc-handover"; got != want {
 		t.Errorf("menu = %q; want %q", got, want)
 	}
 }
@@ -135,11 +136,11 @@ func TestMoveAndSelect(t *testing.T) {
 func TestView_TwoLinesPerCommand(t *testing.T) {
 	long := workspace()
 	long = append(long, core.SlashCommand{
-		Name: "/a-very-long-app-command", Usage: "with a usage hint that runs well past the popup",
+		Name: "/h-very-long-app-command", Usage: "with a usage hint that runs well past the popup",
 		Desc: "and a description that does too, so both lines have to be cut to fit", Type: core.SlashCommandApp, AppName: "Verbose",
 	})
 	m := opened(t, long)
-	m.SetQuery("a")
+	m.SetQuery("h")
 	view := m.View()
 	lines := strings.Split(view, "\n")
 	for i, l := range lines {
@@ -149,18 +150,20 @@ func TestView_TwoLinesPerCommand(t *testing.T) {
 	}
 	plain := ansiRe.ReplaceAllString(view, "")
 	for _, want := range []string{
-		"▌ /a-very-long-app-command with a usage hint",
+		"▌ /h-very-long-app-command with a usage hint",
 		"▌ App · Verbose · and a description that does too",
-		"/attach [path]",
-		"slk · Attach a file from your computer",
 		"/halp [description of issue]",
 		"App · Atlassian Assist · Raise a request",
 		"Command · Google Meet · Start a Google Meet",
+		"App · Ticket Taco · On-Demand Handover",
 		"…",
 	} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("view lacks %q:\n%s", want, plain)
 		}
+	}
+	if strings.Contains(plain, "/challenge") || strings.Contains(plain, "/shrug") {
+		t.Errorf("a name with h inside a word is listed for /h:\n%s", plain)
 	}
 
 	if strings.Contains(plain, "█") {
@@ -171,6 +174,11 @@ func TestView_TwoLinesPerCommand(t *testing.T) {
 		t.Fatalf("fixture has %d commands; need more than MaxVisible to scroll", got)
 	}
 	plain = ansiRe.ReplaceAllString(m.View(), "")
+	for _, want := range []string{"/attach [path]", "slk · Attach a file from your computer"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("view lacks %q:\n%s", want, plain)
+		}
+	}
 	if got := strings.Count(plain, "\n") + 1; got != 2*MaxVisible {
 		t.Errorf("scrolling menu is %d lines; want %d rows of two lines (the test's styles draw no border)", got, MaxVisible)
 	}

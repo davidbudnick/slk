@@ -300,3 +300,79 @@ func TestAppCommands_ReportsARefusal(t *testing.T) {
 		t.Errorf("list = %+v, err = %v; want /a alone, with no team", list, err)
 	}
 }
+
+// TestEmojiUsage_ReadsCountsAndTheFrecencyStore pins the request (the
+// web client's fetch-frecency-prefs, plus the store's name on
+// Enterprise Grid) and the two string-wrapped JSON prefs it reads.
+func TestEmojiUsage_ReadsCountsAndTheFrecencyStore(t *testing.T) {
+	store := `{"":[{"id":"Etada","count":9,"visits":[5]}],` +
+		`"pepe":[{"id":"Epepe_ez","count":12,"visits":[1,2]}],` +
+		`"Epepe_ez":{"id":"Epepe_ez","count":46,"visits":[1700000000000,1794502042124,1790000000000]},` +
+		`"E1f44c":{"id":"E1f44c","count":701,"visits":[1794255675716]},` +
+		`"C0EXAMPLE01":{"id":"C0EXAMPLE01","count":3,"visits":[1]},` +
+		`"Eodd":{"id":"Esomething-else","count":3,"visits":[1]}}`
+	body, err := json.Marshal(map[string]any{"ok": true, "prefs": map[string]string{
+		"emoji_use":           `{"tada":210,"pepe-salute":102,"+1::skin-tone-3":4}`,
+		"frecency":            "",
+		"frecency_ent_jumper": store,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotPath, gotPrefs, gotReason string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = r.ParseForm()
+		gotPrefs, gotReason = r.PostForm.Get("prefs"), r.FormValue("_x_reason")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+	c := NewClient("xoxc-test", "d-cookie")
+	pointClientAtTestServer(t, c, srv)
+
+	usage, err := c.EmojiUsage(context.Background())
+	if err != nil {
+		t.Fatalf("EmojiUsage: %v", err)
+	}
+	if gotPath != "/api/users.prefs.get" || gotPrefs != "emoji_use,frecency,frecency_ent_jumper" || gotReason != "fetch-frecency-prefs" {
+		t.Errorf("request = %s prefs=%q reason=%q; want users.prefs.get for the three prefs as fetch-frecency-prefs", gotPath, gotPrefs, gotReason)
+	}
+	if len(usage.Counts) != 3 || usage.Counts["tada"] != 210 || usage.Counts["pepe-salute"] != 102 || usage.Counts["+1::skin-tone-3"] != 4 {
+		t.Errorf("Counts = %v; want the three counts", usage.Counts)
+	}
+	want := []EmojiFrecency{
+		{ID: "1f44c", Count: 701, LastUsed: 1794255675716},
+		{ID: "pepe_ez", Count: 46, LastUsed: 1794502042124},
+	}
+	if len(usage.Recent) != len(want) || usage.Recent[0] != want[0] || usage.Recent[1] != want[1] {
+		t.Errorf("Recent = %+v; want %+v (the emoji records only, each with its latest visit)", usage.Recent, want)
+	}
+}
+
+func TestParseEmojiUsage(t *testing.T) {
+	for name, body := range map[string]string{
+		"no prefs":       `{"ok":true,"prefs":{}}`,
+		"empty prefs":    `{"ok":true,"prefs":{"emoji_use":"","frecency":""}}`,
+		"a broken store": `{"ok":true,"prefs":{"emoji_use":"","frecency_ent_jumper":"not json"}}`,
+	} {
+		usage, err := parseEmojiUsage([]byte(body))
+		if err != nil || usage.Counts == nil || len(usage.Counts) != 0 || len(usage.Recent) != 0 {
+			t.Errorf("%s: usage = %+v, err = %v; want empty results", name, usage, err)
+		}
+	}
+	// Outside Enterprise Grid the store is the frecency pref.
+	usage, err := parseEmojiUsage([]byte(`{"ok":true,"prefs":{"emoji_use":"{}","frecency":"{\"Etada\":{\"id\":\"Etada\",\"count\":2,\"visits\":[7]}}"}}`))
+	if err != nil || len(usage.Recent) != 1 || usage.Recent[0] != (EmojiFrecency{ID: "tada", Count: 2, LastUsed: 7}) {
+		t.Errorf("frecency pref: usage = %+v, err = %v; want tada's record", usage, err)
+	}
+	for name, body := range map[string]string{
+		"a refusal":             `{"ok":false,"error":"not_authed"}`,
+		"not JSON":              `<html>`,
+		"an emoji_use not JSON": `{"ok":true,"prefs":{"emoji_use":"tada"}}`,
+	} {
+		if _, err := parseEmojiUsage([]byte(body)); err == nil {
+			t.Errorf("%s parsed without an error", name)
+		}
+	}
+}
