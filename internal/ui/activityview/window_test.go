@@ -21,14 +21,19 @@ func referenceView(m *Model, height, width int) string {
 		// Not under test here: the empty state doesn't depend on windowing.
 		panic("referenceView: only covers the non-empty body")
 	}
-	separator := blankLine(width)
+	chrome := []string{m.title(width), blankLine(width)}
+	if height <= chromeRows {
+		return strings.Join(chrome[:height], "\n")
+	}
+	height -= chromeRows
+	separator := ruleLine(width)
 	var lines []string
 	for i, it := range m.items {
 		if i > 0 {
 			lines = append(lines, separator)
 		}
-		l1, l2 := m.renderCard(it, width, i == m.selected)
-		lines = append(lines, l1, l2)
+		card := m.renderCard(it, width, i == m.selected)
+		lines = append(lines, card[:]...)
 	}
 	if !m.hasSnapped || m.snappedSelection != m.selected {
 		m.snapToSelected(height, len(lines))
@@ -49,8 +54,8 @@ func referenceView(m *Model, height, width int) string {
 	if end > len(lines) {
 		end = len(lines)
 	}
-	visible := append([]string(nil), lines[m.yOffset:end]...)
-	for len(visible) < height {
+	visible := append(chrome, lines[m.yOffset:end]...)
+	for len(visible) < height+chromeRows {
 		visible = append(visible, blankLine(width))
 	}
 	return strings.Join(visible, "\n")
@@ -82,10 +87,11 @@ func TestView_MatchesUnwindowedReference(t *testing.T) {
 		{"bottom", func(m *Model) { m.GoToBottom() }},
 		{"top", func(m *Model) { m.GoToTop() }},
 	}
-	// Heights straddle a card boundary (2 content lines, stride 3) and
-	// include viewports taller than the whole list (n<=10 at h=40).
+	// Heights straddle the heading and a card boundary (3 content lines,
+	// stride 4) and include viewports taller than the whole list (n<=10
+	// at h=60).
 	for _, n := range []int{1, 2, 10, 57} {
-		for _, height := range []int{1, 2, 3, 5, 40} {
+		for _, height := range []int{1, 2, 3, 5, 7, 60} {
 			for _, width := range []int{20, 80} {
 				t.Run(fmt.Sprintf("n=%d/h=%d/w=%d", n, height, width), func(t *testing.T) {
 					got, want := newBenchModel(n), newBenchModel(n)

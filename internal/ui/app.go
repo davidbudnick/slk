@@ -3029,7 +3029,11 @@ func (a *App) setChannels(items []sidebar.ChannelItem, knownNames map[string]str
 		names = make(map[string]string, len(items))
 	}
 	types := make(map[string]string, len(items))
+	peers := map[string]string{}
 	for _, ch := range items {
+		if ch.DMUserID != "" {
+			peers[ch.ID] = ch.DMUserID
+		}
 		// Skip entries with empty names (defensive -- they'd never
 		// match a typed query and would clutter the empty-query view).
 		if ch.Name == "" {
@@ -3041,6 +3045,7 @@ func (a *App) setChannels(items []sidebar.ChannelItem, knownNames map[string]str
 	a.pushChannelPicks()
 	a.setChannelNames(names)
 	a.activityView.SetChannelTypes(types)
+	a.activityView.SetDMPeers(peers)
 }
 
 // setChannelNames fans out a UI-owned snapshot. Callers must not mutate a
@@ -3249,6 +3254,7 @@ func (a *App) SetAvatarService(s core.AvatarService) {
 	a.threadPanel.SetAvatarFunc(fn)
 	a.threadPanel.SetSixelAvatarFunc(sixelFn)
 	a.threadsView.SetAvatarFunc(fn)
+	a.activityView.SetAvatarFunc(fn)
 	a.sidebar.SetAvatarFunc(a.sidebarAvatarFunc())
 }
 
