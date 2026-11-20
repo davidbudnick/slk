@@ -12,6 +12,7 @@ import (
 
 	"github.com/slack-go/slack"
 
+	"github.com/gammons/slk/internal/core"
 	"github.com/gammons/slk/internal/debuglog"
 	"github.com/gammons/slk/internal/slack/mrkdwn"
 	"github.com/gammons/slk/internal/slackhttp"
@@ -74,6 +75,71 @@ func (c *Client) RunCommand(ctx context.Context, req CommandRequest) error {
 	}
 	debuglog.General("chat.command: ok")
 	return nil
+}
+
+// AppCommands returns the workspace's slash commands, as the web client
+// reads them from client.appCommands (undocumented) for its "/" menu.
+// Capture: testdata/client_app_commands.json. The response's
+// app_actions is not read.
+func (c *Client) AppCommands(ctx context.Context) ([]core.SlashCommand, error) {
+	ctx = slackhttp.WithReason(ctx, "dispatch-client-extras")
+	raw, err := c.postForm(ctx, "client.appCommands", url.Values{})
+	if err != nil {
+		return nil, err
+	}
+	return parseAppCommands(raw)
+}
+
+// parseAppCommands reads client.appCommands' commands[]. A command's
+// source is app_name for an app's and service_name for a service's,
+// and its team is the first of its teams: the workspace, which on
+// Enterprise Grid is not the organization the session's own team ID
+// names.
+func parseAppCommands(raw []byte) ([]core.SlashCommand, error) {
+	var resp struct {
+		OK       bool   `json:"ok"`
+		Error    string `json:"error"`
+		Commands []struct {
+			Name        string   `json:"name"`
+			Usage       string   `json:"usage"`
+			Desc        string   `json:"desc"`
+			Type        string   `json:"type"`
+			AppName     string   `json:"app_name"`
+			ServiceName string   `json:"service_name"`
+			AliasOf     string   `json:"alias_of"`
+			Teams       []string `json:"teams"`
+		} `json:"commands"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("parsing client.appCommands: %w (body=%s)", err, truncateForLog(raw))
+	}
+	if !resp.OK {
+		return nil, fmt.Errorf("client.appCommands: %s", resp.Error)
+	}
+	out := make([]core.SlashCommand, 0, len(resp.Commands))
+	for _, c := range resp.Commands {
+		if !strings.HasPrefix(c.Name, "/") {
+			continue
+		}
+		source := c.AppName
+		if source == "" {
+			source = c.ServiceName
+		}
+		team := ""
+		if len(c.Teams) > 0 {
+			team = c.Teams[0]
+		}
+		out = append(out, core.SlashCommand{
+			Name:    c.Name,
+			Usage:   strings.TrimSpace(c.Usage),
+			Desc:    strings.TrimSpace(c.Desc),
+			Type:    c.Type,
+			AppName: source,
+			AliasOf: c.AliasOf,
+			TeamID:  team,
+		})
+	}
+	return out, nil
 }
 
 // commandForm builds chat.command's business fields (postForm adds the

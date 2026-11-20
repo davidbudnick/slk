@@ -69,6 +69,11 @@ type CommandService interface {
 	// threadTS's thread when threadTS is set.
 	// args is wire-form text (<@U…>, <#C…|name>); "" for none.
 	Run(teamID string, channelID ids.ChannelID, threadTS ids.ThreadTS, command, args string) error
+
+	// List returns the active workspace's slash commands, or nil when
+	// they are not known (yet). It does not block. The slice is shared:
+	// callers must not change it.
+	List() []SlashCommand
 }
 
 // ThreadService is the App's interface to Slack's thread surfaces:

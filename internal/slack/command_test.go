@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/gammons/slk/internal/core"
 )
 
 // capturedForm loads a scrubbed web-client capture and returns its form
@@ -210,5 +212,91 @@ func TestRunCommand_HTTPFailureIsNotARejection(t *testing.T) {
 	var rej *CommandRejectedError
 	if err == nil || errors.As(err, &rej) {
 		t.Fatalf("err = %v, want a non-rejection transport error", err)
+	}
+}
+
+// TestAppCommands_ReadsTheCapturedList parses the list the web client
+// got for its "/" menu, and asks for it the way that client did.
+func TestAppCommands_ReadsTheCapturedList(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "client_app_commands.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var capture struct {
+		Form     [][2]string     `json:"form"`
+		Response json.RawMessage `json:"response"`
+	}
+	if err := json.Unmarshal(raw, &capture); err != nil {
+		t.Fatal(err)
+	}
+	wantReason := ""
+	for _, kv := range capture.Form {
+		if kv[0] == "_x_reason" {
+			wantReason = kv[1]
+		}
+	}
+	if wantReason == "" {
+		t.Fatal("client_app_commands.json has no _x_reason")
+	}
+
+	var gotPath, gotReason, gotToken string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = r.ParseForm()
+		gotReason, gotToken = r.FormValue("_x_reason"), r.PostForm.Get("token")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(capture.Response)
+	}))
+	defer srv.Close()
+	c := NewClient("xoxc-test", "d-cookie")
+	pointClientAtTestServer(t, c, srv)
+
+	list, err := c.AppCommands(context.Background())
+	if err != nil {
+		t.Fatalf("AppCommands: %v", err)
+	}
+	if gotPath != "/api/client.appCommands" || gotToken != "xoxc-test" {
+		t.Errorf("request went to %q with token %q; want /api/client.appCommands and the xoxc token", gotPath, gotToken)
+	}
+	if gotReason != wantReason {
+		t.Errorf("_x_reason = %q; want the captured %q", gotReason, wantReason)
+	}
+
+	byName := map[string]core.SlashCommand{}
+	aliases, kinds := 0, map[string]int{}
+	for _, cmd := range list {
+		byName[cmd.Name] = cmd
+		kinds[cmd.Type]++
+		if cmd.AliasOf != "" {
+			aliases++
+		}
+	}
+	if len(list) != 32 || aliases != 5 || kinds[core.SlashCommandCore] != 24 || kinds[core.SlashCommandApp] != 7 || kinds[core.SlashCommandService] != 1 {
+		t.Errorf("parsed %d commands, %d aliases, kinds %v; the capture has 32, 5, and 24 core, 7 app, 1 service", len(list), aliases, kinds)
+	}
+	if got, want := byName["/shrug"], (core.SlashCommand{Name: "/shrug", Usage: "your text", Desc: "Appends ¯\\_(ツ)_/¯ to your message", Type: "core", TeamID: "T0EXAMPLE01"}); got != want {
+		t.Errorf("/shrug = %+v; want %+v", got, want)
+	}
+	if got := byName["/giphy"]; got.Type != core.SlashCommandService || got.AppName != "Giphy" {
+		t.Errorf("/giphy = %+v; want the service command named for Giphy", got)
+	}
+	if got := byName["/linear"]; got.Type != core.SlashCommandApp || got.AppName != "Linear" || got.Usage != "issue title (optional)" {
+		t.Errorf("/linear = %+v; want the Linear app's command with its usage trimmed", got)
+	}
+	if got := byName["/dm"]; got.AliasOf != "/msg" {
+		t.Errorf("/dm = %+v; want an alias of /msg", got)
+	}
+}
+
+func TestAppCommands_ReportsARefusal(t *testing.T) {
+	if _, err := parseAppCommands([]byte(`{"ok":false,"error":"enterprise_is_restricted"}`)); err == nil || !strings.Contains(err.Error(), "enterprise_is_restricted") {
+		t.Errorf("err = %v; want Slack's error", err)
+	}
+	if _, err := parseAppCommands([]byte(`<html>`)); err == nil {
+		t.Error("a body that is not JSON parsed")
+	}
+	list, err := parseAppCommands([]byte(`{"ok":true,"commands":[{"name":"/a","teams":[]},{"name":"shortcut","type":"app"}]}`))
+	if err != nil || len(list) != 1 || list[0].Name != "/a" || list[0].TeamID != "" {
+		t.Errorf("list = %+v, err = %v; want /a alone, with no team", list, err)
 	}
 }

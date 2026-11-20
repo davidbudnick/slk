@@ -223,12 +223,8 @@ func (a *App) renderChannelMessagesPanel(msgWidth, msgBorder, contentHeight int,
 		// Inline pickers stack above the compose box. They're
 		// mutually exclusive in compose.Update; emoji wins if
 		// somehow both are.
-		if pickerView := a.compose.EmojiPickerView(msgWidth - 2); pickerView != "" {
-			composeView = pickerView + "\n" + composeView
-		} else if mentionView := a.compose.MentionPickerView(msgWidth - 2); mentionView != "" {
-			composeView = mentionView + "\n" + composeView
-		} else if channelView := a.compose.ChannelPickerView(msgWidth - 2); channelView != "" {
-			composeView = channelView + "\n" + composeView
+		if popup := a.compose.PopupView(msgWidth - 2); popup != "" {
+			composeView = popup + "\n" + composeView
 		}
 	}
 	// Background-colored spacer line above the compose box

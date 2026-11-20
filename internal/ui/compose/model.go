@@ -13,6 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/gammons/slk/internal/bubbles/channelpicker"
+	"github.com/gammons/slk/internal/bubbles/commandpicker"
 	"github.com/gammons/slk/internal/core"
 	"github.com/gammons/slk/internal/emoji"
 	"github.com/gammons/slk/internal/ui/emojipicker"
@@ -100,6 +101,12 @@ type Model struct {
 	channelStartCol int
 	channels        []channelpicker.Channel
 	reverseChannels map[string]string // channel name -> channel ID
+
+	// The "/" menu. commandActive is a session: a slash was typed at
+	// position 0 of an empty composer and the text is still a command
+	// name being typed. The menu shows while that name has matches.
+	commandPicker commandpicker.Model
+	commandActive bool
 
 	// Emoji picker state. emojiStartCol is the byte offset of the FIRST
 	// CHARACTER AFTER the trigger ':' within input.Value() (mirrors
@@ -237,6 +244,8 @@ func New(channelName string) Model {
 		drafts:      make(map[draftKey]draft),
 		channelPicker: channelpicker.New(
 			channelpicker.WithStyles(channelPickerStyles())),
+		commandPicker: commandpicker.New(nil,
+			commandpicker.WithStyles(commandPickerStyles())),
 	}
 }
 
@@ -245,6 +254,7 @@ func New(channelName string) Model {
 func (m *Model) RefreshStyles() {
 	m.setInputBackground(styles.SurfaceDark)
 	m.channelPicker.SetStyles(channelPickerStyles())
+	m.commandPicker.SetStyles(commandPickerStyles())
 	m.dirty()
 }
 
@@ -553,10 +563,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m2.dirty()
 		return m2, cmd
 	}
+	// The "/" menu, while it has a row to offer.
+	if m.IsCommandActive() && isKey {
+		m2, cmd := m.handleCommandKey(keyMsg)
+		m2.dirty()
+		return m2, cmd
+	}
 
 	// Normal textarea update
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
+	if isKey {
+		m.openCommandOnSlash(keyMsg)
+	}
+	m.syncCommand()
 
 	// Check if @ was just typed at a word boundary
 	if isKey && keyMsg.Key().Text == "@" {
@@ -1076,6 +1096,7 @@ func (m *Model) closePickers() {
 	m.channelPicker.Close()
 	m.emojiActive = false
 	m.emojiPicker.Close()
+	m.CloseCommand()
 }
 
 // SetChannelMembership records the member set for a channel and, if

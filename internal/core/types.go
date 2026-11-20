@@ -372,6 +372,32 @@ type CommandError struct {
 
 func (e *CommandError) Error() string { return e.Code }
 
+// Slash command kinds, as client.appCommands types them, and the one
+// for a command slk itself provides.
+const (
+	SlashCommandCore    = "core"
+	SlashCommandApp     = "app"
+	SlashCommandService = "service"
+	SlashCommandLocal   = "slk"
+)
+
+// SlashCommand is one command of a workspace's slash command list.
+type SlashCommand struct {
+	// Name has its slash: "/giphy".
+	Name string
+	// Usage is the argument hint after the name ("[text]"); Desc says
+	// what the command does. Either may be empty.
+	Usage, Desc string
+	// Type is one of the SlashCommand kinds; AppName names the app or
+	// service behind an app's or service's command.
+	Type, AppName string
+	// AliasOf is the command this one is another name for, or "".
+	AliasOf string
+	// TeamID is the team the command is run in, as the list gives it;
+	// "" when it gives none.
+	TeamID string
+}
+
 // AttachmentRefusedError is how adapters report that a link preview was
 // certainly not removed: Slack refused (an ok:false that leaves nothing
 // done), rate limited the call, or the call was never sent. Reason is
