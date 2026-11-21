@@ -27,6 +27,19 @@ type services struct {
 	presence  core.PresenceService
 	files     core.FileService
 	profiles  core.ProfileService
+	commands  core.CommandService
+}
+
+// demoCommands is the demo workspace's "/" menu: Slack's own commands
+// and two made-up apps'.
+var demoCommands = []core.SlashCommand{
+	{Name: "/away", Desc: "Toggle your away status", Type: core.SlashCommandCore},
+	{Name: "/remind", Usage: "[@someone or #channel] [what] [when]", Desc: "Set a reminder", Type: core.SlashCommandCore},
+	{Name: "/status", Usage: "[clear] or [:emoji: status]", Desc: "Set or clear your custom status", Type: core.SlashCommandCore},
+	{Name: "/open", Usage: "[#channel]", Desc: "Open a channel", Type: core.SlashCommandCore},
+	{Name: "/msg", Usage: "@someone [message]", Desc: "Send a direct message", Type: core.SlashCommandCore},
+	{Name: "/deploy", Usage: "[service] [env]", Desc: "Deploy a service", Type: core.SlashCommandApp, AppName: "deploybot"},
+	{Name: "/retro", Usage: "[question]", Desc: "Start a team retro", Type: core.SlashCommandApp, AppName: "Retrospect"},
 }
 
 // toMrkdwn converts what the user typed, as cmd/slk's real send does, so
@@ -53,6 +66,10 @@ func frecentEmoji(limit int) []core.EmojiEntry {
 func (d *Demo) services() services {
 	w, dir := d.world, d.director
 	return services{
+		commands: core.NewCommandService(core.CommandServiceFuncs{
+			List: func() []core.SlashCommand { return demoCommands },
+			Run:  func(string, ids.ChannelID, ids.ThreadTS, string, string) error { return nil },
+		}),
 		channels: core.NewChannelService(core.ChannelServiceFuncs{
 			Fetch: func(channelID ids.ChannelID, _ string) core.Msg {
 				ch := string(channelID)
