@@ -608,13 +608,19 @@ func (p presenceAdapter) SendTyping(channelID string) {
 func NewSettingsService(
 	saveTheme func(teamID, name string, scope ThemeScope),
 	saveSidebarWidth func(width int),
+	saveCollapsedSections func(teamID string, names []string),
 ) SettingsService {
-	return settingsAdapter{saveTheme: saveTheme, saveSidebarWidth: saveSidebarWidth}
+	return settingsAdapter{
+		saveTheme:             saveTheme,
+		saveSidebarWidth:      saveSidebarWidth,
+		saveCollapsedSections: saveCollapsedSections,
+	}
 }
 
 type settingsAdapter struct {
-	saveTheme        func(teamID, name string, scope ThemeScope)
-	saveSidebarWidth func(width int)
+	saveTheme             func(teamID, name string, scope ThemeScope)
+	saveSidebarWidth      func(width int)
+	saveCollapsedSections func(teamID string, names []string)
 }
 
 func (s settingsAdapter) SaveTheme(teamID, name string, scope ThemeScope) {
@@ -626,6 +632,12 @@ func (s settingsAdapter) SaveTheme(teamID, name string, scope ThemeScope) {
 func (s settingsAdapter) SaveSidebarWidth(width int) {
 	if s.saveSidebarWidth != nil {
 		s.saveSidebarWidth(width)
+	}
+}
+
+func (s settingsAdapter) SaveCollapsedSections(teamID string, names []string) {
+	if s.saveCollapsedSections != nil {
+		s.saveCollapsedSections(teamID, names)
 	}
 }
 

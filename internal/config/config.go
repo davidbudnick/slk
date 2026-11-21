@@ -289,6 +289,12 @@ type Workspace struct {
 	// workspaces, alphabetically by slug). Ties in Order break by slug.
 	Order        int `toml:"order"`
 	SidebarWidth int `toml:"sidebar_width"`
+	// CollapsedSections names the sidebar sections that start
+	// collapsed, as their headers read. slk rewrites it whenever a
+	// section is collapsed or expanded. Nil (key absent) falls through
+	// to [sidebar] start_collapsed and the built-in defaults; a list,
+	// even an empty one, wins over both.
+	CollapsedSections []string `toml:"collapsed_sections"`
 	// UseSlackSections overrides [general].use_slack_sections for this
 	// workspace. Nil means "fall through to global".
 	UseSlackSections *bool                 `toml:"use_slack_sections"`
@@ -605,6 +611,16 @@ func (c Config) ResolveWidth(teamID string) int {
 		return c.Sidebar.Width
 	}
 	return 30
+}
+
+// ResolveCollapsedSections returns the workspace's saved collapsed
+// sections; saved is false when it has no collapsed_sections key.
+func (c Config) ResolveCollapsedSections(teamID string) (names []string, saved bool) {
+	ws, ok := c.WorkspaceByTeamID(teamID)
+	if !ok || ws.CollapsedSections == nil {
+		return nil, false
+	}
+	return append([]string{}, ws.CollapsedSections...), true
 }
 
 // ResolveTheme returns the theme name to use for the given workspace,

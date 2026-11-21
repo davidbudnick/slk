@@ -269,6 +269,7 @@ func reduceWorkspaceReady(a *App, m WorkspaceReadyMsg) tea.Cmd {
 			a.sidebar.SetWidth(m.SidebarWidth)
 		}
 		a.sidebar.SetSectionsProvider(m.SectionsProvider)
+		a.sidebar.SetSavedCollapsedSections(m.CollapsedSections)
 		// Before the lists below, so they are filtered on first build.
 		a.SetDeactivatedUsers(m.DeactivatedUsers, m.DeactivatedSeq)
 		a.setChannels(m.Channels, m.ChannelNames)
@@ -431,6 +432,7 @@ func reduceWorkspaceSwitched(a *App, m WorkspaceSwitchedMsg) tea.Cmd {
 	a.SetMode(ModeNormal)
 	a.compose.Blur()
 	a.sidebar.SetSectionsProvider(m.SectionsProvider)
+	a.sidebar.SetSavedCollapsedSections(m.CollapsedSections)
 	// Forget the previous workspace's live DM presence before loading
 	// the new one, so its cache-seeded item presence isn't overwritten
 	// by a stale peer from the workspace we're leaving. The new
