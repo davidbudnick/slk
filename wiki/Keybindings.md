@@ -56,7 +56,7 @@
 | `Ctrl+w v` / `:vsp` | Normal | Split the focused window into two, side by side |
 | `Ctrl+w h/j/k/l` | Normal | Focus the window in that direction |
 | `Ctrl+w w` | Normal | Cycle through windows |
-| `Ctrl+w q` / `:q` | Normal | Close the focused window (not the last one) |
+| `Ctrl+w q` / `:q` | Normal | Close the focused window. On the last one `Ctrl+w q` refuses and `:q` quits slk |
 | `Ctrl+w o` / `:only` (`:on`) | Normal | Close every other window |
 | `1`–`9` | Normal | Jump to workspace N |
 | `r` | Normal (message) | Open reaction picker |
@@ -70,7 +70,7 @@
 | `Y` / `C` | Normal (message) | Copy message permalink |
 | `H` / `:huddle` | Normal | Copy the huddle link of the conversation on screen (channels, DMs, group DMs; the focused thread pane, or the highlighted Threads/Activity row, names the channel) |
 | `F` | Normal (message / thread) | Forward selected message using the channel finder; Enter sends, Esc cancels |
-| `O` / `v` | Normal (message) | Open full-screen image preview. An image Slack made no thumbnail for (SVG) is downloaded and opened in the system viewer instead |
+| `Space` / `O` / `v` | Normal (message) | Open full-screen image preview; `Space`, `Esc` or `q` closes it. An image Slack made no thumbnail for (SVG) is downloaded and opened in the system viewer instead |
 | `Esc` / `q` | Preview | Close preview |
 | `Enter` | Preview | Open in system image viewer |
 | `h` / `←` | Preview | Previous image (when message has multiple) |

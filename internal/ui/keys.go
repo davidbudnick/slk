@@ -129,7 +129,7 @@ func DefaultKeyMap() KeyMap {
 		CopyMessage:     key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy message")),
 		CopyPermalink:   key.NewBinding(key.WithKeys("Y", "C"), key.WithHelp("Y/C", "copy permalink")),
 		ForwardMessage:  key.NewBinding(key.WithKeys("F"), key.WithHelp("F", "forward message")),
-		OpenPreview:     key.NewBinding(key.WithKeys("O", "v"), key.WithHelp("O/v", "open image preview")),
+		OpenPreview:     key.NewBinding(key.WithKeys("O", "v"), key.WithHelp("space/O/v", "open image preview")),
 		OpenLink:        key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open link in message")),
 		DownloadFile:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "download file in message")),
 		MarkUnread:      key.NewBinding(key.WithKeys("U"), key.WithHelp("U", "mark unread")),
@@ -189,7 +189,7 @@ func DefaultKeyMap() KeyMap {
 		WinVSplit:    key.NewBinding(key.WithHelp("ctrl+w v / :vsp", "vertical split window")),
 		WinNavigate:  key.NewBinding(key.WithHelp("ctrl+w h/j/k/l", "focus window in direction")),
 		WinCycle:     key.NewBinding(key.WithHelp("ctrl+w w", "cycle windows")),
-		WinClose:     key.NewBinding(key.WithHelp("ctrl+w q / :q", "close window")),
+		WinClose:     key.NewBinding(key.WithHelp("ctrl+w q / :q", "close window (:q quits from the last)")),
 		WinOnly:      key.NewBinding(key.WithHelp("ctrl+w o / :only", "close other windows")),
 		// Insert mode, thread compose only: toggles Slack's
 		// "Also send to #channel" checkbox for the next reply.
