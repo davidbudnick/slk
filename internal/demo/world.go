@@ -37,7 +37,8 @@ type (
 		id, name, typ, section string
 		sectionOrder           int
 		dmUserID               string
-		unread                 int // trailing top-level messages not yet read
+		members                []string // a group DM's people besides the user
+		unread                 int      // trailing top-level messages not yet read
 		mentions               int
 		msgs                   []msgSpec
 	}
@@ -57,6 +58,7 @@ type (
 	}
 	user struct {
 		id, name string
+		display  string // Slack display name; name stands in when empty
 		presence string // "active" or "away"; shown on DM rows
 		status   peerstatus.Status
 		title    string // shown in the profile dialog
@@ -71,6 +73,7 @@ type channel struct {
 	id, name, typ, section string
 	sectionOrder           int
 	dmUserID               string
+	members                []string
 	teamID                 string
 	messages               []core.MessageItem            // top level, ascending TS
 	replies                map[string][]core.MessageItem // parent TS -> replies, ascending TS
@@ -84,6 +87,7 @@ type team struct {
 	firstChannel            string
 	users                   []user
 	channels                []*channel
+	fullNames               bool
 }
 
 // World is the demo's in-memory Slack. The fake services read and write
@@ -106,7 +110,7 @@ func newWorld(specs []teamSpec, now time.Time, clock func() time.Time) *World {
 			selfID: ts.selfID, responder: ts.responder, firstChannel: ts.firstChannel, users: ts.users}
 		for _, cs := range ts.channels {
 			c := &channel{id: cs.id, name: cs.name, typ: cs.typ, section: cs.section,
-				sectionOrder: cs.sectionOrder, dmUserID: cs.dmUserID, teamID: t.id,
+				sectionOrder: cs.sectionOrder, dmUserID: cs.dmUserID, members: cs.members, teamID: t.id,
 				replies: map[string][]core.MessageItem{}, mentions: cs.mentions}
 			for _, ms := range cs.msgs {
 				parent := w.fixtureItem(t, ms, now)
@@ -125,6 +129,7 @@ func newWorld(specs []teamSpec, now time.Time, clock func() time.Time) *World {
 			t.channels = append(t.channels, c)
 			w.byID[c.id] = c
 		}
+		t.setFullNames(false)
 		w.teams = append(w.teams, t)
 	}
 	if len(w.teams) > 0 {
@@ -180,13 +185,57 @@ func (w *World) fixtureItem(t *team, ms msgSpec, now time.Time) core.MessageItem
 	return m
 }
 
+// userName is how the team shows id: full name or display name.
 func (t *team) userName(id string) string {
 	for _, u := range t.users {
 		if u.id == id {
-			return u.name
+			return t.shown(u)
 		}
 	}
 	return id
+}
+
+// shown returns u's full name when full names are on, else the display name.
+func (t *team) shown(u user) string {
+	if t.fullNames || u.display == "" {
+		return u.name
+	}
+	return u.display
+}
+
+// setFullNames names the team's people, DMs, group DMs and authors by
+// full name when on, else by display name.
+func (t *team) setFullNames(on bool) {
+	t.fullNames = on
+	for _, c := range t.channels {
+		switch {
+		case c.typ == "dm" && t.hasUser(c.dmUserID):
+			c.name = t.userName(c.dmUserID)
+		case c.typ == "group_dm" && len(c.members) > 0:
+			names := make([]string, len(c.members))
+			for i, id := range c.members {
+				names[i] = t.userName(id)
+			}
+			c.name = strings.Join(names, ", ")
+		}
+		for i := range c.messages {
+			c.messages[i].UserName = t.userName(c.messages[i].UserID)
+		}
+		for _, rs := range c.replies {
+			for i := range rs {
+				rs[i].UserName = t.userName(rs[i].UserID)
+			}
+		}
+	}
+}
+
+// useFullNames shows every team's people by full name when on.
+func (w *World) useFullNames(on bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, t := range w.teams {
+		t.setFullNames(on)
+	}
 }
 
 // hasUser reports whether id is one of the team's users.
@@ -270,12 +319,16 @@ func (w *World) profile(teamID, userID string) (core.UserProfile, error) {
 			continue
 		}
 		handle := strings.ToLower(strings.ReplaceAll(u.name, " ", ""))
+		display := u.display
+		if display == "" {
+			display = u.name
+		}
 		return core.UserProfile{
 			UserID:      u.id,
 			TeamID:      t.id,
 			Handle:      handle,
 			RealName:    u.name,
-			DisplayName: u.name,
+			DisplayName: display,
 			Title:       u.title,
 			Pronouns:    u.pronouns,
 			Email:       handle + "@example.com",
@@ -602,7 +655,7 @@ func (t *team) snapshot() teamSnapshot {
 	}
 	presence := map[string]string{}
 	for _, u := range t.users {
-		s.userNames[u.id] = u.name
+		s.userNames[u.id] = t.shown(u)
 		presence[u.id] = u.presence
 		if u.status != (peerstatus.Status{}) {
 			s.statuses[u.id] = u.status

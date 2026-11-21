@@ -90,6 +90,10 @@ type userResolver struct {
 	// avatarTried is RequestAvatar's once-per-session set: userID ->
 	// struct{}. Entries are never removed.
 	avatarTried sync.Map
+
+	// realNameTried is wantsRealName's once-per-session set, like
+	// avatarTried.
+	realNameTried sync.Map
 }
 
 func newUserResolver(
@@ -141,7 +145,7 @@ func (r *userResolver) Request(userID string) {
 	// both miss the cache, both then LoadOrStore (one wins, the loser
 	// silently returns). Store-first + check-second means at most one
 	// goroutine ever passes the cache check.
-	if u, err := r.db.GetUser(userID); err == nil && (u.DisplayName != "" || u.Name != "") {
+	if u, err := r.db.GetUser(userID); err == nil && (u.DisplayName != "" || u.Name != "") && !r.wantsRealName(u) {
 		r.inflight.Delete(userID)
 		return
 	}
@@ -155,6 +159,16 @@ func (r *userResolver) Request(userID string) {
 		r.flushTimer = time.AfterFunc(userResolverBatchWindow, r.flush)
 	}
 	r.pendingMu.Unlock()
+}
+
+// wantsRealName reports whether a named cached person is fetched once
+// more, this session, for the full name their row was cached without.
+func (r *userResolver) wantsRealName(u cache.User) bool {
+	if !fullNames.Load() || u.RealName != "" || u.IsBot || !wantsAvatarBackfill(u.ID) {
+		return false
+	}
+	_, tried := r.realNameTried.LoadOrStore(u.ID, struct{}{})
+	return !tried
 }
 
 // resolveOne resolves a single user through the Web API users.info
@@ -217,6 +231,7 @@ func (r *userResolver) resolveOneContext(ctx context.Context, userID string) {
 		HomeTeamID:       u.TeamID,
 		Name:             u.Name,
 		DisplayName:      name,
+		RealName:         u.RealName,
 		AvatarURL:        u.Profile.Image32,
 		Presence:         "away",
 		IsBot:            isBot,
@@ -236,14 +251,15 @@ func (r *userResolver) resolveOneContext(ctx context.Context, userID string) {
 	// In the store too, so the name survives for this workspace's next
 	// switch snapshot even if the UserResolvedMsg below is dropped
 	// because the workspace is not the active one.
-	r.names.Set(userID, name)
+	shown := shownName(u.RealName, name)
+	r.names.Set(userID, shown)
 	r.queueResolvedPeer(userID)
 	if r.send != nil {
 		// Status has already been persisted and sent by applyProfileStatus.
 		r.send(ui.UserResolvedMsg{
 			TeamID:      r.teamID,
 			UserID:      userID,
-			DisplayName: name,
+			DisplayName: shown,
 			IsBot:       isBot,
 		})
 	}
@@ -472,6 +488,7 @@ func (r *userResolver) applyEdgeUser(u edge.User) {
 		HomeTeamID:       u.TeamID,
 		Name:             u.Name,
 		DisplayName:      name,
+		RealName:         u.Profile.RealName,
 		AvatarURL:        u.Profile.ImageOriginal,
 		IsBot:            u.IsBot,
 		Deleted:          u.Deleted,
@@ -484,7 +501,8 @@ func (r *userResolver) applyEdgeUser(u edge.User) {
 		Version:          u.Version,
 	})
 	announceUserDeleted(r.send, u.ID, wasDeleted, u.Deleted)
-	r.names.Set(u.ID, name) // see resolveOne
+	shown := shownName(u.Profile.RealName, name)
+	r.names.Set(u.ID, shown) // see resolveOne
 	r.queueResolvedPeer(u.ID)
 	if r.send != nil {
 		// Status before UserResolvedMsg, as in resolveOne.
@@ -500,7 +518,7 @@ func (r *userResolver) applyEdgeUser(u edge.User) {
 		r.send(ui.UserResolvedMsg{
 			TeamID:      r.teamID,
 			UserID:      u.ID,
-			DisplayName: name,
+			DisplayName: shown,
 			IsBot:       u.IsBot,
 		})
 	}

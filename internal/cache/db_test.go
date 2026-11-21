@@ -593,3 +593,32 @@ func TestSchema_FreshDBHasNoUnreadCountColumn(t *testing.T) {
 		}
 	}
 }
+
+// TestMigration_RealNameColumnResetsVersion: a database from before
+// real_name existed has its user versions zeroed once, so the next
+// revalidation fetches the full names; every older column group is
+// seeded complete to isolate this one.
+func TestMigration_RealNameColumnResetsVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	seedUsersTable(t, path,
+		"id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, name TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 0, "+
+			"home_team_id TEXT NOT NULL DEFAULT '', "+
+			"status_emoji TEXT NOT NULL DEFAULT '', status_text TEXT NOT NULL DEFAULT '', status_expiration INTEGER NOT NULL DEFAULT 0, "+
+			"huddle_state TEXT NOT NULL DEFAULT '', huddle_expiration INTEGER NOT NULL DEFAULT 0",
+		"'U1', 'T1', 'alice', 42, 'T1', '', '', 0, 'default_unset', 0")
+
+	assertUserVersion(t, path, 0, "real_name was missing")
+	assertUserVersion(t, path, 0, "second open")
+
+	db, err := New(path)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := db.conn.Exec(`UPDATE users SET version = 9 WHERE id = 'U1'`); err != nil {
+		t.Fatalf("setting version: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("closing db: %v", err)
+	}
+	assertUserVersion(t, path, 9, "real_name was already there, so the version must be left alone")
+}

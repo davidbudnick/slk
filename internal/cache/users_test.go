@@ -117,3 +117,77 @@ func TestUpsertUserPreservesPresence(t *testing.T) {
 		t.Errorf("display_name = %q; profile columns should still update", got.DisplayName)
 	}
 }
+
+// A full name is kept by every write that carries none, and replaced
+// by one that carries another: placeholder upserts and edge records
+// without a real_name must not blank it.
+func TestUserRealNameSurvivesWritesWithoutOne(t *testing.T) {
+	db := setupDBWithWorkspace(t)
+	defer db.Close()
+
+	realName := func() string {
+		t.Helper()
+		u, err := db.GetUser("U1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u.RealName
+	}
+
+	if err := db.UpsertUser(User{ID: "U1", WorkspaceID: "T1", Name: "ann", DisplayName: "ann", RealName: "Ann Lee"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := realName(); got != "Ann Lee" {
+		t.Fatalf("real name after insert = %q; want Ann Lee", got)
+	}
+	if err := db.UpsertUser(User{ID: "U1", WorkspaceID: "T1", Name: "ann", DisplayName: "ann"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := realName(); got != "Ann Lee" {
+		t.Errorf("real name after an upsert without one = %q; want Ann Lee kept", got)
+	}
+	for _, avatar := range []string{"", "https://cdn/ann.png"} {
+		if err := db.UpdateUserFromEdge(EdgeUserUpdate{ID: "U1", Name: "ann", DisplayName: "ann", AvatarURL: avatar}); err != nil {
+			t.Fatal(err)
+		}
+		if got := realName(); got != "Ann Lee" {
+			t.Errorf("real name after an edge update without one (avatar %q) = %q; want Ann Lee kept", avatar, got)
+		}
+		if err := db.UpsertUserFromEdge("T1", EdgeUserUpdate{ID: "U1", Name: "ann", DisplayName: "ann", AvatarURL: avatar}); err != nil {
+			t.Fatal(err)
+		}
+		if got := realName(); got != "Ann Lee" {
+			t.Errorf("real name after an edge upsert without one (avatar %q) = %q; want Ann Lee kept", avatar, got)
+		}
+	}
+	if err := db.UpdateUserFromEdge(EdgeUserUpdate{ID: "U1", Name: "ann", DisplayName: "ann", RealName: "Ann Lee-Park"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := realName(); got != "Ann Lee-Park" {
+		t.Errorf("real name after an edge update = %q; want Ann Lee-Park", got)
+	}
+	for i, avatar := range []string{"", "https://cdn/bo.png"} {
+		id := []string{"U2", "U3"}[i]
+		if err := db.UpsertUserFromEdge("T1", EdgeUserUpdate{ID: id, Name: "bo", DisplayName: "bo", RealName: "Bo Ito", AvatarURL: avatar}); err != nil {
+			t.Fatal(err)
+		}
+		u, err := db.GetUser(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u.RealName != "Bo Ito" {
+			t.Errorf("real name of an edge-inserted user (avatar %q) = %q; want Bo Ito", avatar, u.RealName)
+		}
+	}
+	users, err := db.ListUsers("T1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := map[string]string{}
+	for _, u := range users {
+		listed[u.ID] = u.RealName
+	}
+	if listed["U1"] != "Ann Lee-Park" || listed["U2"] != "Bo Ito" {
+		t.Errorf("ListUsers real names = %v; want U1 Ann Lee-Park and U2 Bo Ito", listed)
+	}
+}

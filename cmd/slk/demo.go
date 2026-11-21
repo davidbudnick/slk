@@ -34,6 +34,7 @@ func runDemo(scenario string) error {
 		return err
 	}
 	styles.SetTransparentBackground(os.Getenv("SLK_DEMO_TRANSPARENT") == "1")
+	d.UseFullNames(os.Getenv("SLK_DEMO_FULL_NAMES") == "1")
 	styles.Apply(d.InitialTheme(), core.Theme{})
 	emojiwidth.SetImageMode(false, 2)
 

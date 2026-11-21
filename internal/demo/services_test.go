@@ -161,7 +161,7 @@ func TestWorkspaceSwitch(t *testing.T) {
 	if !ok || msg.TeamID != teamDriftwood || msg.TeamName != "Driftwood OSS" || msg.Theme != "catppuccin latte" || msg.UserID != uAlexDW {
 		t.Fatalf("Switch = %#v", msg)
 	}
-	if msg.Channels[0].ID != chContributors || msg.UserNames[uRuth] != "Ruth Adeyemi" {
+	if msg.Channels[0].ID != chContributors || msg.UserNames[uRuth] != "ruth" {
 		t.Errorf("channels/users = %+v / %v", msg.Channels, msg.UserNames)
 	}
 	if _, ok := s.unread.ChannelReadStates()[chContributors]; !ok {

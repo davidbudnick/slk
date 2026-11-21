@@ -55,13 +55,18 @@ func newDemo(scenario string, now time.Time, clock func() time.Time) (*Demo, err
 		proto:    imgpkg.ProtoHalfBlock,
 		cellPx:   image.Pt(8, 16),
 	}
-	for _, s := range w.snapshots() {
-		for id, name := range s.userNames {
-			d.avatars[id] = renderAvatar(id, name)
+	for _, t := range w.teams {
+		for _, u := range t.users {
+			d.avatars[u.id] = renderAvatar(u.id, u.name)
 		}
 	}
 	return d, nil
 }
+
+// UseFullNames shows people by full name when on, as [appearance]
+// full_names does, and by display name otherwise (the default). cmd/slk
+// calls it for SLK_DEMO_FULL_NAMES=1; call it before StartupMsgs.
+func (d *Demo) UseFullNames(on bool) { d.world.useFullNames(on) }
 
 // InitialTheme is the theme of the workspace active at startup, to apply
 // before the first frame.
