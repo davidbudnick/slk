@@ -504,6 +504,7 @@ type DesktopServiceFuncs struct {
 	Open          func(target string) error
 	ReadClipboard func(f ClipboardFormat) []byte
 	Stat          func(path string) (fs.FileInfo, error)
+	ChooseFiles   func() ([]string, error)
 	SaveThread    func(parent MessageItem, replies []MessageItem, userNames, channelNames map[string]string, channelName string) (string, error)
 	ReportStatus  func(unread, otherUnread int, workspace, title string)
 }
@@ -535,6 +536,13 @@ func (d desktopAdapter) Stat(path string) (fs.FileInfo, error) {
 		return nil, fs.ErrNotExist
 	}
 	return d.fns.Stat(path)
+}
+
+func (d desktopAdapter) ChooseFiles() ([]string, error) {
+	if d.fns.ChooseFiles == nil {
+		return nil, errors.ErrUnsupported
+	}
+	return d.fns.ChooseFiles()
 }
 
 func (d desktopAdapter) SaveThread(parent MessageItem, replies []MessageItem, userNames, channelNames map[string]string, channelName string) (string, error) {
