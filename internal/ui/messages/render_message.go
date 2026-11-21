@@ -128,6 +128,7 @@ func BlockkitContext(msg MessageItem, rc *RenderContext, emojiFlushes *[]func(io
 		MaxRows:     imgCtx.MaxRows,
 		MaxCols:     imgCtx.MaxCols,
 		UserNames:   rc.UserNames,
+		Slack:       CurrentLook().Slack,
 		MessageTS:   msg.TS,
 		Channel:     rc.ImageChannel,
 		// Mention resolution belongs to the host; plain control labels
@@ -294,7 +295,7 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 		EmojiFlushes: &out.BodyFlushes,
 		Width:        contentWidth,
 	}
-	headerTimestamp := styles.Timestamp.Render(msg.Timestamp)
+	headerTimestamp := TimestampStyle().Render(msg.Timestamp)
 	headerGapText := "  "
 	if rc.Compact {
 		headerGapText = " "
@@ -319,7 +320,7 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 
 	var editedMark string
 	if opt.EditedMark && msg.IsEdited {
-		editedMark = " " + styles.Timestamp.Render("(edited)")
+		editedMark = " " + TimestampStyle().Render("(edited)")
 	}
 	// Wrap before adding the avatar's fixed two-row gutter. Each wrapped
 	// line must restore its own styles after that gutter resets the pen.
@@ -404,7 +405,13 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 	if stats != nil {
 		bodyT0 = time.Now()
 	}
-	rendered := RenderSlackMarkdownWith(bodySrc, bodyOpts)
+	rendered, jumbo := "", false
+	if headerOnSeparateLine {
+		rendered, jumbo = jumboEmoji(bodySrc, bodyOpts, contentWidth)
+	}
+	if !jumbo {
+		rendered = RenderSlackMarkdownWith(bodySrc, bodyOpts)
+	}
 	if len(rc.SearchTerms) > 0 {
 		// SearchHighlightSGR's close sequence restores the theme bg/fg
 		// after the highlight's reset so plain body text doesn't bleed
@@ -483,7 +490,7 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 		preAttachmentRows++ // the ephemeral label occupies its own row
 	}
 	if opt.BroadcastLabel && msg.Subtype == "thread_broadcast" {
-		labelRows += styles.Timestamp.Render("\u21b3 replied to a thread") + "\n"
+		labelRows += TimestampStyle().Render("\u21b3 replied to a thread") + "\n"
 		preAttachmentRows++ // the broadcast label occupies its own row
 	}
 
@@ -591,7 +598,7 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 		bkInteractive = bkInteractive || res.Interactive
 	}
 	if bkInteractive {
-		hint := styles.Timestamp.Render(InteractiveHint(msg))
+		hint := TimestampStyle().Render(InteractiveHint(msg))
 		bkLines = append(bkLines, hint)
 	}
 	out.MentionsSelf = msg.UserID != rc.Self.UserID && mentionsSelf
@@ -643,6 +650,10 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 			// image reuses that slice; a single image reuses its one
 			// block on the RenderBlock path below.
 			blocks := inlineRun(rc.Images, msg.Attachments, attIdx, contentWidth)
+			if label := fileLabel(blocks, contentWidth); label != "" {
+				attachLineSlices = append(attachLineSlices, []string{label})
+				rowCursor++
+			}
 			if len(blocks) > 1 {
 				run := rc.Images.RenderImageRun(blocks, rc.ImageChannel, msg.TS, contentWidth, attIdx)
 				// joinImageLines returns its own slice, so splicing the
@@ -759,7 +770,12 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 		attachmentLineCount = len(flat)
 	}
 
+	// Slack draws reactions over the reply row; slk's own look, under it.
+	pillsFirst := CurrentLook().Slack
 	msgContent := labelRows + header + bodyRow + bkBlock + attachmentLines + threadLine + reactionLine
+	if pillsFirst {
+		msgContent = labelRows + header + bodyRow + bkBlock + attachmentLines + reactionLine + threadLine
+	}
 
 	// Translate per-pill specs into entry-relative reaction hit rects.
 	// reactionRowBase is the row index (within linesNormal) where the
@@ -773,7 +789,7 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 	out.Hits = append(out.Hits, imageHits...)
 	if len(pillSpecs) > 0 && reactionLineCount > 0 {
 		reactionRowBase := preAttachmentRows + attachmentLineCount
-		if threadLine != "" {
+		if threadLine != "" && !pillsFirst {
 			reactionRowBase++
 		}
 		out.Hits = append(out.Hits, reactionHits(pillSpecs, reactionRowBase, contentColBase)...)
@@ -811,6 +827,22 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 	out.HeaderBudget = headerBudget
 	out.SixelRows = allSixel
 	return out
+}
+
+// fileLabel is the line Slack draws over inline images: the file's name, or how many files.
+func fileLabel(blocks []imgrender.Block, width int) string {
+	if !CurrentLook().Slack || len(blocks) == 0 {
+		return ""
+	}
+	label := blocks[0].Name
+	if len(blocks) > 1 {
+		label = fmt.Sprintf("%d files", len(blocks))
+	}
+	if label == "" {
+		return ""
+	}
+	muted := lipgloss.NewStyle().Background(styles.Background).Foreground(styles.TextMuted)
+	return muted.Render(ansi.Truncate(label, width, "…"))
 }
 
 // attachmentBlock is the imgrender view of one file attachment.

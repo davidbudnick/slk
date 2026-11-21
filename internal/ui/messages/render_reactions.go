@@ -49,6 +49,11 @@ func renderReactionPills(msg MessageItem, rc *RenderContext, opt RenderOptions, 
 	if pillCells <= 0 {
 		pillCells = 2
 	}
+	slack := CurrentLook().Slack
+	addKey := ""
+	if slack {
+		addKey = AddReactionKey
+	}
 	for i, r := range msg.Reactions {
 		// Image path: pass r.Emoji directly (including any skin-tone
 		// suffix) -- URLForShortcode composes the per-tone CDN URL natively.
@@ -82,6 +87,9 @@ func renderReactionPills(msg MessageItem, rc *RenderContext, opt RenderOptions, 
 			style = styles.ReactionPillOwn
 		} else {
 			style = styles.ReactionPillOther
+			if slack {
+				style = style.Foreground(styles.TextPrimary)
+			}
 		}
 		pillText := ReactionPillText(emojiStr, r.Count, style, placedFlush != nil)
 		pills = append(pills, style.Render(pillText))
@@ -92,13 +100,14 @@ func renderReactionPills(msg MessageItem, rc *RenderContext, opt RenderOptions, 
 			out.ReactionFlushes = append(out.ReactionFlushes, placedFlush)
 		}
 	}
-	if opt.IsSelected && rc.Nav.Active {
+	nav := opt.IsSelected && rc.Nav.Active
+	if nav || slack {
 		plusStyle := styles.ReactionPillPlus
-		if rc.Nav.Index >= len(msg.Reactions) {
+		if nav && rc.Nav.Index >= len(msg.Reactions) {
 			plusStyle = styles.ReactionPillSelected
 		}
 		pills = append(pills, plusStyle.Render("+"))
-		pillEmojis = append(pillEmojis, "")
+		pillEmojis = append(pillEmojis, addKey)
 	}
 	// Join pills with wrapping. emojiutil.Width() consults the
 	// terminal-probed width cache so wrapping decisions match what the

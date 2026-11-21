@@ -10,6 +10,7 @@
 package blockkit
 
 import (
+	"regexp"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -58,6 +59,10 @@ func RenderLegacy(atts []LegacyAttachment, ctx Context, width int) RenderResult 
 // and footer are rendered to the right of the colored stripe at
 // width - stripeCol.
 func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, width int) {
+	if ctx.Slack && width >= previewMinWidth && isLinkPreview(a) {
+		appendLinkPreview(out, a, ctx, width)
+		return
+	}
 	perf := ctx.Perf // local alias; nil disables timing
 	// Pretext renders ABOVE the stripe, full width, no indent.
 	if a.Pretext != "" {
@@ -209,11 +214,14 @@ func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, 
 		if perf != nil {
 			t0 = time.Now()
 		}
-		footer := a.Footer
+		footer := footerLinks(a.Footer)
 		if a.TS != 0 {
-			ts := time.Unix(a.TS, 0).UTC().Format("2006-01-02 3:04 PM")
+			ts, sep := time.Unix(a.TS, 0).UTC().Format("2006-01-02 3:04 PM"), " · "
+			if ctx.Slack {
+				ts, sep = footerTime(a.TS, now()), " | "
+			}
 			if footer != "" {
-				footer += " · " + ts
+				footer += sep + ts
 			} else {
 				footer = ts
 			}
@@ -288,6 +296,21 @@ func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, 
 			out.Hits = append(out.Hits, h)
 		}
 	}
+}
+
+// footerLinkRe matches a Slack link, with or without a label.
+var footerLinkRe = regexp.MustCompile(`<([a-z][a-z0-9+.-]*:[^|>\s]+)(?:\|([^>]+))?>`)
+
+// footerLinks draws a footer's links as their labels, still clickable.
+func footerLinks(footer string) string {
+	return footerLinkRe.ReplaceAllStringFunc(footer, func(match string) string {
+		parts := footerLinkRe.FindStringSubmatch(match)
+		label := parts[2]
+		if label == "" {
+			label = parts[1]
+		}
+		return "\x1b]8;;" + parts[1] + "\x1b\\" + label + "\x1b]8;;\x1b\\"
+	})
 }
 
 // renderLegacyFields lays out attachment fields. Two consecutive

@@ -946,6 +946,19 @@ func TestConfig_SidebarSlackOptions(t *testing.T) {
 	}
 }
 
+// link_glyph defaults to the link emoji, and takes a glyph or nothing.
+func TestConfig_LinkGlyph(t *testing.T) {
+	for src, want := range map[string]string{
+		"":                                   "🔗",
+		"[appearance]\nlink_glyph = \"L\"\n": "L",
+		"[appearance]\nlink_glyph = \"\"\n":  "",
+	} {
+		if got := loadConfigString(t, src).Appearance.LinkGlyph; got != want {
+			t.Errorf("config %q: link_glyph = %q, want %q", src, got, want)
+		}
+	}
+}
+
 func TestMatchSectionAndOrder_ExplicitOrder(t *testing.T) {
 	c := Config{
 		Sections: map[string]SectionDef{

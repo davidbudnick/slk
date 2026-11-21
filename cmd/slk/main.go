@@ -1590,6 +1590,8 @@ func run() error {
 			PermalinkDomains: snap.PermalinkDomains(teamID),
 			Theme:            snap.ResolveTheme(teamID),
 			SidebarWidth:     snap.ResolveWidth(teamID),
+			UnderlineLinks:   wctx.Display.UnderlineLinks,
+			PlainEmoji:       wctx.Display.PlainEmoji,
 			Channels:         channels,
 			FinderItems:      wctx.FinderItems,
 			// A private copy: the UI must never share a map with the
@@ -1868,6 +1870,8 @@ func run() error {
 				PermalinkDomains: cfgSnap.PermalinkDomains(wctx.TeamID),
 				Theme:            cfgSnap.ResolveTheme(wctx.TeamID),
 				SidebarWidth:     cfgSnap.ResolveWidth(wctx.TeamID),
+				UnderlineLinks:   wctx.Display.UnderlineLinks,
+				PlainEmoji:       wctx.Display.PlainEmoji,
 				// Detach both UI snapshots before the event owner starts.
 				Channels:    slices.Clone(wctx.Channels),
 				FinderItems: slices.Clone(wctx.FinderItems),

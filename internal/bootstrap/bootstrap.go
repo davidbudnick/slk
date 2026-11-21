@@ -247,6 +247,9 @@ type Result struct {
 	// through rather than dropped.
 	LegacyMutedRaw string
 
+	// Display is the user's Slack settings for how messages look.
+	Display boot.DisplayPrefs
+
 	// Counts is the unread state. It is the zero value when
 	// client.counts failed, which on its own is not distinguishable
 	// from a workspace with nothing unread — hence CountsOK.
@@ -422,6 +425,7 @@ func Run(ctx context.Context, deps Deps) (*Result, error) {
 		EmojiCacheTS:     bootRes.EmojiCacheTS,
 		MutePrefsRaw:     bootRes.Prefs.AllNotificationsPrefs,
 		LegacyMutedRaw:   bootRes.Prefs.MutedChannels,
+		Display:          bootRes.Prefs.Display,
 	}
 
 	// Unread state. Non-fatal: badges are cosmetic and a workspace

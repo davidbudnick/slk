@@ -2028,21 +2028,14 @@ func (m *Model) buildCache(width int, keepPosition bool) {
 		msgDate := DateFromTS(msg.TS)
 		afterDivider := false
 		if msgDate != "" && msgDate != lastDate {
-			label := FormatDateSeparator(msgDate)
-			sepStr := "── " + label + " ──"
-			sep := DividerStyle(width).Render(sepStr)
-			appendSeparator(sep)
+			appendSeparator(DaySeparator(FormatDateSeparator(msgDate), width))
 			lastDate = msgDate
 			afterDivider = true
 		}
 
 		// New message landmark: insert before the first unread message
 		if m.lastReadTS != "" && !newMsgLandmarkInserted && msg.TS > m.lastReadTS {
-			newStr := "── new ──"
-			label := lipgloss.NewStyle().Background(styles.Background).Foreground(styles.Error).Bold(true).
-				Width(width).Align(lipgloss.Center).
-				Render(newStr)
-			appendSeparator(label)
+			appendSeparator(NewSeparator(width))
 			newMsgLandmarkInserted = true
 			afterDivider = true
 		}

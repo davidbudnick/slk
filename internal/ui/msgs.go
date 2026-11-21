@@ -374,7 +374,10 @@ type (
 		PermalinkDomains []string // configured aliases for archive permalink routing
 		Theme            string   // resolved theme name (per-workspace or global default)
 		SidebarWidth     int      // resolved sidebar width (per-workspace or global default)
-		Channels         []sidebar.ChannelItem
+		// UnderlineLinks and PlainEmoji are the user's own Slack
+		// settings: underlined links, and jumbo emoji switched off.
+		UnderlineLinks, PlainEmoji bool
+		Channels                   []sidebar.ChannelItem
 		// ChannelNames includes known non-member channels for mention rendering.
 		ChannelNames map[string]string
 		FinderItems  []core.ChannelFinderItem
@@ -471,7 +474,10 @@ type (
 		PermalinkDomains []string // configured aliases for archive permalink routing
 		Theme            string   // resolved theme name (per-workspace or global default)
 		SidebarWidth     int      // resolved sidebar width (per-workspace or global default)
-		Channels         []sidebar.ChannelItem
+		// UnderlineLinks and PlainEmoji are the user's own Slack
+		// settings: underlined links, and jumbo emoji switched off.
+		UnderlineLinks, PlainEmoji bool
+		Channels                   []sidebar.ChannelItem
 		// ChannelNames includes known non-member channels for mention rendering.
 		ChannelNames map[string]string
 		FinderItems  []core.ChannelFinderItem
