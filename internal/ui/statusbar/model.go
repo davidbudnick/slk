@@ -92,7 +92,7 @@ func (m Model) channelGlyph() string {
 	switch m.channelType {
 	case "private":
 		return "\u25c6 "
-	case "dm", "group_dm":
+	case "dm", "group_dm", "app":
 		return "\u25cf "
 	default:
 		return "#"

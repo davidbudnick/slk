@@ -48,7 +48,9 @@ func (d draft) isEmpty() bool {
 type Model struct {
 	input       textarea.Model
 	channelName string
-	width       int // display width, set by SetWidth
+	// direct marks a DM, group DM or app conversation (SetDirect).
+	direct bool
+	width  int // display width, set by SetWidth
 
 	// Mention picker state
 	mentionPicker   mentionpicker.Model
@@ -155,8 +157,25 @@ func (m *Model) Version() int64 { return m.version }
 func (m *Model) dirty() { m.version++ }
 
 // defaultPlaceholder returns the default channel-aware placeholder text.
+// A person, group or app is named without the channel's "#".
 func (m *Model) defaultPlaceholder() string {
+	if m.direct {
+		return "Message " + m.channelName + "... (i to insert)"
+	}
 	return "Message #" + m.channelName + "... (i to insert)"
+}
+
+// SetDirect says the conversation is a DM, a group DM or an app, which
+// the placeholder names without "#".
+func (m *Model) SetDirect(direct bool) {
+	if m.direct == direct {
+		return
+	}
+	m.direct = direct
+	if m.placeholderOverride == "" {
+		m.input.Placeholder = m.defaultPlaceholder()
+	}
+	m.dirty()
 }
 
 // effectivePlaceholder returns the override if set, else the default.

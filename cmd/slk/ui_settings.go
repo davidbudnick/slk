@@ -41,6 +41,8 @@ type uiSettings struct {
 	StayInInsertAfterSend bool
 	// ReplyAvatars is [appearance] reply_avatars (default off).
 	ReplyAvatars bool
+	// MessageSlackStyle is [appearance] slack_style (default off).
+	MessageSlackStyle bool
 	// WorkspacePickerVimKeys is [general] workspace_picker_vim_keys
 	// (default off).
 	WorkspacePickerVimKeys bool
@@ -80,6 +82,7 @@ func uiSettingsFromConfig(cfg config.Config) uiSettings {
 		Theme:                  cfg.Appearance.Theme,
 		StayInInsertAfterSend:  cfg.Compose.StayInInsertAfterSend,
 		ReplyAvatars:           cfg.Appearance.ReplyAvatars,
+		MessageSlackStyle:      cfg.Appearance.SlackStyle,
 		HideDeactivatedUsers:   cfg.General.HideDeactivatedUsers,
 		WorkspacePickerVimKeys: cfg.General.WorkspacePickerVimKeys,
 		EnterKeepsFocus:        cfg.Sidebar.EnterKeepsFocus,
@@ -115,6 +118,7 @@ func applyUISettings(app *ui.App, s uiSettings) {
 	app.SetThemeName(s.Theme)
 	app.SetStayInInsertAfterSend(s.StayInInsertAfterSend)
 	app.SetReplyAvatars(s.ReplyAvatars)
+	app.SetMessageSlackStyle(s.MessageSlackStyle)
 	app.SetWorkspacePickerVimKeys(s.WorkspacePickerVimKeys)
 	app.SetEnterKeepsFocus(s.EnterKeepsFocus)
 	app.SetClickOpensThread(s.ClickOpensThread)

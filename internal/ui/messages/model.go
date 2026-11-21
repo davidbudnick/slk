@@ -246,6 +246,14 @@ type Model struct {
 	// put the username on the same line as the message, remove vertical
 	// separation between messages.
 	compact bool
+	// slackStyle groups an author's messages and anchors a short
+	// conversation to the bottom (SetSlackStyle).
+	slackStyle bool
+	// scrollAnchor is the message at the top of the window when older
+	// history was prepended, and how many of its rows were above the
+	// window; the next rebuild puts it back there (PrependMessages).
+	scrollAnchor       string
+	scrollAnchorWithin int
 }
 
 // SetFocused records whether the messages pane currently holds user focus
@@ -718,13 +726,13 @@ func (m *Model) SetChannelType(chType string) {
 }
 
 // ChannelGlyph returns the prefix glyph for a channel type: "◆" for
-// "private", "●" for "dm" and "group_dm", "#" otherwise. Used by the
-// messages-pane header and the thread breadcrumb.
+// "private", "●" for "dm", "group_dm" and "app", "#" otherwise. Used by
+// the messages-pane header and the thread breadcrumb.
 func ChannelGlyph(chType string) string {
 	switch chType {
 	case "private":
 		return "\u25c6" // ◆
-	case "dm", "group_dm":
+	case "dm", "group_dm", "app":
 		return "\u25cf" // ●
 	default:
 		return "#"
@@ -1107,10 +1115,39 @@ func (m *Model) PrependMessages(msgs []MessageItem) {
 		debuglog.Cache("messages.Model.PrependMessages: channel=%q count_before=%d count_added=%d added=[%s]",
 			m.channelName, len(m.messages), count, summarizeMessageItems(msgs))
 	}
+	m.rememberScrollAnchor()
 	m.messages = append(msgs, m.messages...)
 	m.selected += count
 	m.dropCache()
 	m.dirty()
+}
+
+// rememberScrollAnchor records the message at the top of the window, so
+// the rebuild after older history lands keeps it there instead of
+// drawing one frame at the new history's top.
+func (m *Model) rememberScrollAnchor() {
+	if m.cache == nil {
+		return
+	}
+	entries, offsets, y := m.list.Entries(), m.list.Offsets(), m.list.YOffset()
+	for i := range entries {
+		if entries[i].ID == "" || i+1 < len(entries) && offsets[i+1] <= y {
+			continue
+		}
+		m.scrollAnchor, m.scrollAnchorWithin = entries[i].ID, y-offsets[i]
+		return
+	}
+}
+
+// restoreScrollAnchor puts the remembered message back at the top of
+// the window, and keeps the cursor from snapping the window away.
+func (m *Model) restoreScrollAnchor() {
+	id := m.scrollAnchor
+	m.scrollAnchor = ""
+	if i, ok := m.list.IndexOf(id); ok && id != "" {
+		m.list.SetYOffset(m.list.Offsets()[i] + m.scrollAnchorWithin)
+		m.list.MarkSnapped(m.selected)
+	}
 }
 
 func (m *Model) EnterReactionNav() {
@@ -1365,6 +1402,54 @@ func (m *Model) SetCompact(enabled bool) {
 	m.compact = enabled
 	m.dropCache()
 	m.dirty()
+}
+
+// SetSlackStyle lays the pane out as Slack does ([appearance]
+// slack_style): an author's messages sent within a few minutes share
+// one header, and a conversation shorter than the pane sits at its
+// bottom, by the input.
+func (m *Model) SetSlackStyle(enabled bool) {
+	if m.slackStyle == enabled {
+		return
+	}
+	m.slackStyle = enabled
+	m.list.SetAnchorBottom(enabled)
+	m.dropCache()
+	m.dirty()
+}
+
+// groupWindow is how long after a message another by the same author
+// still joins its group.
+const groupWindow = 5 * time.Minute
+
+// continuesGroup reports whether message i is drawn under the header of
+// the message before it: Slack style, the same author within
+// groupWindow on the same day, with nothing drawn between the two, and
+// a message that has a body and needs no header of its own.
+func (m *Model) continuesGroup(i int) bool {
+	if !m.slackStyle || m.compact || i <= 0 || i >= len(m.messages) {
+		return false
+	}
+	prev, msg := HuddleView(m.messages[i-1], m.userNames), HuddleView(m.messages[i], m.userNames)
+	switch {
+	case msg.UserID == "" || msg.UserID != prev.UserID:
+		return false
+	case msg.IsEdited || msg.Ephemeral || prev.Ephemeral || msg.Subtype == "thread_broadcast":
+		return false
+	case core.IsSystemNoticeSubtype(msg.Subtype) || core.IsSystemNoticeSubtype(prev.Subtype):
+		return false
+	case BlocksCarryBody(msg) || strings.TrimSpace(MessageTextSource(msg)) == "":
+		return false
+	case m.lastReadTS != "" && prev.TS <= m.lastReadTS && msg.TS > m.lastReadTS:
+		return false
+	}
+	at, ok := timeFromTS(msg.TS)
+	before, okPrev := timeFromTS(prev.TS)
+	if !ok || !okPrev || at.Format("2006-01-02") != before.Format("2006-01-02") {
+		return false
+	}
+	gap := at.Sub(before)
+	return gap >= 0 && gap < groupWindow
 }
 
 // SetCurrentUser records the authenticated user ID so UpdateReaction can
@@ -1848,6 +1933,14 @@ func (m *Model) renderMessageEntry(i int, width int, cs cacheStyles, stats *entr
 		opt.Avatar = m.avatarFn(msg.UserID)
 		opt.AvatarSixelKey, opt.AvatarSixel = SixelAvatar(m.sixelAvatarFn, msg.UserID)
 	}
+	if m.continuesGroup(i) {
+		opt.Continuation = true
+		if opt.Avatar != "" {
+			// One blank row the avatar's width keeps the body in its column.
+			opt.Avatar = lipgloss.NewStyle().Background(styles.Background).Render(strings.Repeat(" ", lipgloss.Width(strings.SplitN(opt.Avatar, "\n", 2)[0])))
+			opt.AvatarSixelKey, opt.AvatarSixel = "", nil
+		}
+	}
 	r := RenderMessage(msg, width, m.renderContext(), opt)
 	// The channel pane's kitty upload order: blocks, attachments, then
 	// body and reaction emoji.
@@ -1967,6 +2060,7 @@ func (m *Model) buildCache(width int, keepPosition bool) {
 	}
 
 	m.list.SetEntries(entries, width, keepPosition)
+	m.restoreScrollAnchor()
 
 	if stats != nil {
 		debuglog.Perf("messages.buildCache.breakdown N=%d body=%s reactions(n=%d)=%s blockKit(n=%d)=%s legacy(n=%d, atts=%d)=%s [text=%s image=%s other=%s] img[cachedCheck(n=%d)=%s kitty(n=%d)=%s renderImage(n=%d)=%s placeholder(n=%d)=%s] attachments(n=%d)=%s borderWrap=%s plainLines=%s",

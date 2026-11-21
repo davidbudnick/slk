@@ -159,6 +159,11 @@ type Appearance struct {
 	// does: the repliers' avatars (kitty graphics only), then "N
 	// replies". Needs ShowAvatars. Default off.
 	ReplyAvatars bool `toml:"reply_avatars"`
+	// SlackStyle lays the message pane out as Slack does: an author's
+	// messages sent within five minutes share one header, and a
+	// conversation shorter than the pane sits at its bottom, by the
+	// input. Default off.
+	SlackStyle bool `toml:"slack_style"`
 	// Compact makes everything more compact: hides avatars, renders
 	// user name on the same line as the message, disables extra space
 	// between messages, and reduces padding wherever possible.
