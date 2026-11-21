@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+// Two slk in one terminal must not hand out the same IDs, and every ID
+// must fit the 24 bits a placeholder cell carries.
+func TestSharedRegistry_StartsAtARandomID(t *testing.T) {
+	first := map[uint32]bool{}
+	for range 8 {
+		id, _ := newSharedRegistry().Lookup("file-A", image.Pt(4, 2))
+		if id == 0 || id > 1<<(placeholderIDBits-1) {
+			t.Fatalf("first ID %d, want 1..%d", id, 1<<(placeholderIDBits-1))
+		}
+		first[id] = true
+	}
+	if len(first) < 2 {
+		t.Errorf("8 registries all started at %v, want random starts", first)
+	}
+}
+
 func TestRegistry_AssignsStableIDs(t *testing.T) {
 	r := NewRegistry()
 	id1, fresh1 := r.Lookup("file-A", image.Pt(40, 20))

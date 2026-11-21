@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
+	"image"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/gammons/slk/internal/core"
 	"github.com/gammons/slk/internal/ids"
+	imgpkg "github.com/gammons/slk/internal/image"
 	"github.com/gammons/slk/internal/ui/messages"
 )
 
@@ -46,6 +49,40 @@ func TestFocusMsg_RestoresFocus(t *testing.T) {
 	_, _ = app.Update(tea.FocusMsg{})
 	if !app.terminalFocused {
 		t.Error("terminalFocused must be true after FocusMsg")
+	}
+}
+
+// Inside tmux an image uploaded while another window is up never
+// reaches the terminal: tmux forwards passthrough only from a visible
+// pane. A sidebar avatar redrawn for a presence change while the user
+// was elsewhere stayed blank. Coming back sends such images again.
+func TestFocusMsg_SendsAgainImagesUploadedWhileBlurred(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux-1000/default,1234,0")
+	saved := imgpkg.KittyOutput
+	defer func() { imgpkg.KittyOutput = saved; imgpkg.SetTerminalHidden(false) }()
+	var side bytes.Buffer
+	imgpkg.KittyOutput = &side
+	app := NewApp()
+	_, _ = app.Update(tea.FocusMsg{})
+	side.Reset()
+
+	_, _ = app.Update(tea.BlurMsg{})
+	img := image.NewRGBA(image.Rect(0, 0, 3, 5))
+	out := imgpkg.KittyRendererInstance().Render(img, image.Pt(2, 1))
+	if out.OnFlush == nil {
+		t.Fatal("a new image has no upload")
+	}
+	var lost bytes.Buffer
+	if err := out.OnFlush(&lost); err != nil {
+		t.Fatal(err)
+	}
+	if side.Len() != 0 {
+		t.Fatalf("%d bytes reached the side channel before focus came back", side.Len())
+	}
+
+	_, _ = app.Update(tea.FocusMsg{})
+	if !strings.Contains(side.String(), fmt.Sprintf("i=%d,U=1,c=2,r=1", out.ID)) {
+		t.Errorf("the image uploaded while blurred was not sent again: %d bytes", side.Len())
 	}
 }
 

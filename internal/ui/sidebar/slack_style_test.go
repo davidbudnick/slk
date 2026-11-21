@@ -120,3 +120,43 @@ func TestActiveOnly_DormantChannelReturnsOnANewMessage(t *testing.T) {
 		t.Errorf("dormant channel still hidden after a new message:\n%s", view)
 	}
 }
+
+// Slack starts every section's name in one column: an emoji or, on its
+// built-in sections, an icon comes first. A header with neither leaves
+// that column blank instead of starting at it.
+func TestSlackStyle_HeaderNamesShareOneColumn(t *testing.T) {
+	m := New([]ChannelItem{
+		{ID: "C1", Name: "alerts", Type: "channel", Section: "A"},
+		{ID: "D1", Name: "ann", Type: "dm", DMUserID: "U1", Section: "DMS"},
+	})
+	provider := &fakeProvider{ready: true, sections: []SectionMeta{
+		{ID: "A", Name: "Alerts", Emoji: "rocket", Type: "standard"},
+		{ID: "DMS", Name: "Direct messages", Type: "direct_messages"},
+	}}
+	m.SetSectionsProvider(provider)
+	plain := func(row string) string { return ansiRe.ReplaceAllString(row, "") }
+	column := func(view, name string) int { return nameColumn(t, plain(rowFor(t, view, name)), name) }
+
+	view := m.View(10, 40)
+	if column(view, "Direct messages") == column(view, "Alerts") {
+		t.Fatalf("default look changed: both names in column %d", column(view, "Alerts"))
+	}
+
+	m.SetSlackStyle(true)
+	view = m.View(10, 40)
+	if got, want := column(view, "Direct messages"), column(view, "Alerts"); got != want {
+		t.Errorf("Direct messages starts at cell %d, Alerts at %d; want one column", got, want)
+	}
+	m.ToggleCollapse("DMS")
+	view = m.View(10, 40)
+	if got, want := column(view, "Direct messages"), column(view, "Alerts"); got != want {
+		t.Errorf("collapsed, Direct messages starts at cell %d, Alerts at %d", got, want)
+	}
+
+	// With no emoji anywhere there is no column to keep.
+	provider.sections[0].Emoji = ""
+	m.SetSectionsProvider(provider)
+	if got := plain(rowFor(t, m.View(10, 40), "Alerts")); !strings.HasPrefix(strings.TrimLeft(got, "│┃ "), "Alerts") || strings.Contains(got, "    Alerts") {
+		t.Errorf("header indented with no emoji in the sidebar: %q", got)
+	}
+}

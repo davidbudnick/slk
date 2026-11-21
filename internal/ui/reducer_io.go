@@ -22,6 +22,8 @@
 //	imgrender.ImageReadyMsg   - lazy attachment-image fetch
 //	                            landed: invalidate the affected
 //	                            render caches.
+//	blockkit.BlockImageReadyMsg - Block Kit or link-preview image
+//	                            fetch landed: the same.
 //	imgrender.ImageFailedMsg  - lazy attachment-image fetch
 //	                            permanently failed: clear
 //	                            in-flight bookkeeping.
@@ -64,6 +66,7 @@ import (
 	"github.com/gammons/slk/internal/debuglog"
 	"github.com/gammons/slk/internal/ui/imgrender"
 	"github.com/gammons/slk/internal/ui/messages"
+	"github.com/gammons/slk/internal/ui/messages/blockkit"
 	"github.com/gammons/slk/internal/ui/statusbar"
 )
 
@@ -245,6 +248,23 @@ var reduceIO reducerFunc = func(a *App, msg tea.Msg) (tea.Cmd, bool) {
 		// now-cached image bytes. HasReply guards against churning
 		// the thread cache on every messages-pane image arrival.
 		if a.threadPanel.HasReply(m.TS) {
+			a.threadPanel.InvalidateCache()
+		}
+		return nil, true
+
+	case blockkit.BlockImageReadyMsg:
+		debuglog.ImgFetch("recv: kind=ready (blockkit) channel=%s ts=%s req_id=%d",
+			m.Channel, m.TS, m.ReqID)
+		// A Block Kit or link-preview image finished downloading. Its
+		// message holds the "loading…" placeholder until it is drawn
+		// again; nothing did that, so a /giphy post or an article's
+		// picture stayed on the placeholder until some other change
+		// rebuilt the pane. The URL is the key: it only has to be
+		// non-empty, to take the per-message path.
+		for _, mp := range a.allWinModels() {
+			mp.HandleImageReady(m.Channel, m.TS, m.URL)
+		}
+		if a.threadPanel.HasReply(m.TS) || a.threadPanel.ThreadTS() == m.TS {
 			a.threadPanel.InvalidateCache()
 		}
 		return nil, true

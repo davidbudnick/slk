@@ -3,6 +3,7 @@ package image
 import (
 	"fmt"
 	"image"
+	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 )
@@ -32,6 +33,21 @@ func NewRegistry() *Registry {
 		uploaded: map[uint32]bool{},
 	}
 	r.next.Store(1)
+	return r
+}
+
+// placeholderIDBits is how much of an image ID a placeholder cell
+// carries, in its foreground colour.
+const placeholderIDBits = 24
+
+// newSharedRegistry is the registry of a process that shares its
+// terminal: IDs start at a random point in the lower half of what a
+// placeholder can carry. A terminal keeps one image per ID, so two slk
+// in one terminal (two tmux windows) that both counted from 1 drew each
+// other's images.
+func newSharedRegistry() *Registry {
+	r := NewRegistry()
+	r.next.Store(rand.Uint32N(1 << (placeholderIDBits - 1)))
 	return r
 }
 
