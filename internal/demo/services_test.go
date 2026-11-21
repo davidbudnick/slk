@@ -182,7 +182,7 @@ func TestSearchAndThreadsList(t *testing.T) {
 		t.Errorf("SearchChannel = %#v", res)
 	}
 	list, ok := s.threads.ListFetch(ids.TeamID(teamLumen)).(ui.ThreadsListLoadedMsg)
-	if !ok || !list.SubscriptionsAvailable || len(list.Summaries) != 1 || list.Summaries[0].ChannelID != chDeploys {
+	if !ok || !list.SubscriptionsAvailable || len(list.Summaries) != 4 || list.Summaries[0].ChannelID != chDeploys {
 		t.Errorf("ListFetch = %#v", list)
 	}
 }

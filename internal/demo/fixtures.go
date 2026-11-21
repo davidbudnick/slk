@@ -32,6 +32,8 @@ const (
 	uNoor   = "U0NOOR"
 	uTom    = "U0TOM"
 	bDeploy = "B0DEPLOY"
+	bCal    = "B0CAL"
+	bPoll   = "B0POLL"
 )
 
 // Driftwood OSS people.
@@ -57,6 +59,17 @@ const (
 	dmSam         = "D0SAM"
 	dmMaya        = "D0MAYA"
 	gdmLaunch     = "G0LAUNCH"
+	chRoadmap     = "C0ROADMAP"
+	chFeedback    = "C0FEEDBACK"
+	chWarRoom     = "C0WARROOM"
+	chPets        = "C0PETS"
+	chMusic       = "C0MUSIC"
+	appDeploy     = "D0DEPLOYBOT"
+	appCal        = "D0CALENDAR"
+	appPoll       = "D0POLLSTER"
+	dmJonas       = "D0JONAS"
+	dmLena        = "D0LENA"
+	gdmPlatform   = "G0PLATFORM"
 
 	chContributors  = "C1CONTRIB"
 	chAnnouncements = "C1ANNOUNCE"
@@ -145,6 +158,10 @@ func lumenLabs() teamSpec {
 				tz: "America/Los_Angeles", tzAbbrev: "PDT", tzOffset: -25200},
 			{id: bDeploy, name: "deploybot",
 				title: "Deployment Bot", tz: "UTC", tzAbbrev: "UTC"},
+			{id: bCal, name: "Calendar",
+				title: "Calendar App", tz: "UTC", tzAbbrev: "UTC"},
+			{id: bPoll, name: "Pollster",
+				title: "Polls App", tz: "UTC", tzAbbrev: "UTC"},
 		},
 		channels: []channelSpec{
 			{id: chGeneral, name: "general", typ: "channel", section: "Company", sectionOrder: 2, msgs: []msgSpec{
@@ -228,6 +245,76 @@ func lumenLabs() teamSpec {
 				{user: uPriya, ago: 4 * hr, text: "Launch checklist for Thursday is in the doc"},
 				{user: uMaya, ago: 3 * hr, text: "Added the screenshots"},
 				{user: uSam, ago: 170 * mn, text: "I'll own the deploy :rocket:"},
+			}},
+			{id: chRoadmap, name: "roadmap", typ: "channel", section: "Product", sectionOrder: 3, msgs: []msgSpec{
+				{user: uLena, ago: 48 * hr, text: "Q3 roadmap draft is in the doc. Big rocks: *workspace rate limits*, *SSO for teams* and *usage-based billing* :memo:",
+					reactions: []reactSpec{reacts("eyes", uPriya, uSam, uMaya)}},
+				{user: uMaya, ago: 7 * hr, text: "Proposal: move the onboarding checklist into Q3, signups are up and activation is the bottleneck",
+					reactions: []reactSpec{reacts("thumbsup", uLena, uDiego)},
+					replies: []msgSpec{
+						{user: uLena, ago: 7*hr - 10*mn, text: "Agreed. What would we push to Q4 to make room?"},
+						{user: uAlex, ago: 7*hr - 25*mn, text: "Usage-based billing can slip, the metering work isn't ready anyway"},
+						{user: uMaya, ago: 7*hr - 40*mn, text: "Works for me :raised_hands:"},
+					}},
+				{user: uLena, ago: 2 * hr, text: "Updated the doc: onboarding checklist in, billing moves to Q4 :white_check_mark:"},
+			}},
+			{id: chFeedback, name: "customer-feedback", typ: "channel", section: "Product", sectionOrder: 3, unread: 3, mentions: 1, msgs: []msgSpec{
+				{user: uTom, ago: 29 * hr, text: "From a support call: admins want to export the audit log as CSV, not just JSON"},
+				{user: uMaya, ago: 4 * hr, text: "Three trial accounts this week said the invite email lands in spam :envelope:"},
+				{user: uDiego, ago: 75 * mn, text: "Big customer on the Pro plan is hitting the rate limit during their nightly sync :warning:",
+					reactions: []reactSpec{reacts("eyes", uSam, uPriya)}},
+				{user: uTom, ago: 25 * mn, text: "<@U0ALEX> they asked whether the per-workspace limiter ships this month, can you give me a date?"},
+			}},
+			{id: chWarRoom, name: "launch-war-room", typ: "private", section: "Product", sectionOrder: 3, msgs: []msgSpec{
+				{user: uLena, ago: 5 * hr, text: "Go/no-go for Thursday at 4pm. Checklist owners, please update your rows :rocket:",
+					replies: []msgSpec{
+						{user: uSam, ago: 5*hr - 15*mn, text: "Backend is a go, limiter is behind a flag"},
+						{user: uAlex, ago: 5*hr - 30*mn, text: "API docs are merged, changelog goes out with the release"},
+						{user: uMaya, ago: 5*hr - 45*mn, text: "Launch post and screenshots are ready :sparkles:"},
+					}},
+				{user: uJonas, ago: 80 * mn, text: "On-call rota for launch week is set, I'm primary on Thursday"},
+			}},
+			{id: chPets, name: "pets", typ: "channel", section: "Social", sectionOrder: 4, msgs: []msgSpec{
+				{user: uNoor, ago: 9 * hr, text: "Meet Biscuit, first day home :dog:",
+					reactions: []reactSpec{reacts("heart_eyes", uMaya, uLena, uAlex), reacts("dog", uDiego)}},
+				{user: uSam, ago: 3 * hr, text: "My cat has claimed the new monitor box as her office :cat:",
+					reactions: []reactSpec{reacts("joy", uPriya, uTom)},
+					replies: []msgSpec{
+						{user: uAlex, ago: 3*hr - 5*mn, text: "Best use of a monitor box"},
+						{user: uSam, ago: 3*hr - 7*mn, text: "She won't let me throw it out"},
+					}},
+			}},
+			{id: chMusic, name: "music", typ: "channel", section: "Social", sectionOrder: 4, msgs: []msgSpec{
+				{user: uDiego, ago: 30 * hr, text: "Focus playlist for the week, lots of instrumental stuff :headphones:",
+					reactions: []reactSpec{reacts("fire", uJonas)}},
+				{user: uJonas, ago: 6 * hr, text: "Anyone going to the jazz night at the park on Friday? :saxophone:",
+					reactions: []reactSpec{reacts("raised_hand", uNoor, uMaya)}},
+			}},
+			// The apps are in a section of their own: the sidebar starts
+			// its default Apps section collapsed.
+			{id: appDeploy, name: "deploybot", typ: "app", section: "Bots", sectionOrder: 5, dmUserID: bDeploy, msgs: []msgSpec{
+				{user: bDeploy, ago: 4 * hr, text: "Your deploy of *api* #1481 to production finished in 3m 12s :white_check_mark:"},
+			}},
+			{id: appCal, name: "Calendar", typ: "app", section: "Bots", sectionOrder: 5, dmUserID: bCal, unread: 1, mentions: 1, msgs: []msgSpec{
+				{user: bCal, ago: 24 * hr, text: ":calendar: *Sprint planning* starts in 10 minutes"},
+				{user: bCal, ago: 10 * mn, text: ":calendar: *Standup* starts in 10 minutes"},
+			}},
+			{id: appPoll, name: "Pollster", typ: "app", section: "Bots", sectionOrder: 5, dmUserID: bPoll, msgs: []msgSpec{
+				{user: bPoll, ago: 20 * hr, text: ":bar_chart: *Poll closed: Offsite location*\nLakeside cabins - 9 votes\nCity rooftop - 5 votes\nMountain lodge - 3 votes"},
+			}},
+			{id: dmJonas, name: "Jonas Berg", typ: "dm", dmUserID: uJonas, unread: 2, mentions: 2, msgs: []msgSpec{
+				{user: uAlex, ago: 26 * hr, text: "Thanks for the alert tuning, the pager has been quiet"},
+				{user: uJonas, ago: 35 * mn, text: "Are you around Thursday for the launch? I'd like a second pair of eyes on the API dashboards"},
+				{user: uJonas, ago: 34 * mn, text: "No rush, whenever you see this"},
+			}},
+			{id: dmLena, name: "Lena Park", typ: "dm", dmUserID: uLena, msgs: []msgSpec{
+				{user: uLena, ago: 27 * hr, text: "Moved our 1:1 to Wednesday, hope that's ok"},
+				{user: uAlex, ago: 26 * hr, text: "Works for me :thumbsup:"},
+			}},
+			{id: gdmPlatform, name: "Jonas, Noor", typ: "group_dm", msgs: []msgSpec{
+				{user: uJonas, ago: 8 * hr, text: "Noor, want to shadow on-call next week? Good way to learn the stack"},
+				{user: uNoor, ago: 7 * hr, text: "Yes please :raised_hands:"},
+				{user: uAlex, ago: 6 * hr, text: "I'll add you both to the runbook review on Tuesday"},
 			}},
 		},
 	}

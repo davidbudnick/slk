@@ -27,7 +27,7 @@ Type "v"
 Sleep 700ms
 Ctrl+T
 Sleep 400ms
-Type@120ms "depl"
+Type@120ms "deploys"
 Sleep 400ms
 Enter
 Sleep 2.5s
