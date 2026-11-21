@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
@@ -88,6 +89,19 @@ func TestFormatRelTime(t *testing.T) {
 	if got := formatRelTime("not-a-ts"); got != "" {
 		t.Errorf("formatRelTime(garbage) = %q, want empty", got)
 	}
+	for d, want := range map[time.Duration]string{
+		30 * time.Second: "now",
+		time.Minute:      "1 min",
+		5 * time.Minute:  "5 mins",
+		time.Hour:        "1 hr",
+		3 * time.Hour:    "3 hrs",
+		24 * time.Hour:   "1 day",
+		72 * time.Hour:   "3 days",
+	} {
+		if got := relAge(d); got != want {
+			t.Errorf("relAge(%s) = %q, want %q, as Slack words it", d, got, want)
+		}
+	}
 }
 
 func TestSetItemsPreservesSelectionByKey(t *testing.T) {
@@ -138,10 +152,10 @@ func TestUnreadCount(t *testing.T) {
 	}
 }
 
-// A card is always exactly cardStride (2) lines and neither line contains a
-// newline — the flat-list windowing / snap / click math depends on it. A
-// body with embedded newlines must be collapsed, not split.
-func TestRenderCardAlwaysTwoLines(t *testing.T) {
+// A card is always exactly cardContentLines lines, each one row and as
+// wide as the list — the flat-list windowing / snap / click math depends
+// on it. A body with embedded newlines must be collapsed, not split.
+func TestRenderCardAlwaysThreeLines(t *testing.T) {
 	cases := []struct {
 		name string
 		it   core.ActivityItem
@@ -163,17 +177,26 @@ func TestRenderCardAlwaysTwoLines(t *testing.T) {
 			m.SetBodies(map[string]core.ActivityMessage{
 				core.ActivityMsgKey(c.it.ChannelID, c.it.TS): c.body,
 			})
-			l1, l2 := m.renderCard(c.it, 40, false)
-			if strings.Contains(l1, "\n") || strings.Contains(l2, "\n") {
-				t.Fatalf("card line contains a newline:\n1=%q\n2=%q", l1, l2)
+			for _, avatars := range []bool{false, true} {
+				if avatars {
+					m.SetAvatarFunc(func(string) string { return "AVAV\nAVAV" })
+				}
+				for n, l := range m.renderCard(c.it, 40, false) {
+					if strings.Contains(l, "\n") {
+						t.Fatalf("avatars=%v: card line %d contains a newline: %q", avatars, n+1, l)
+					}
+					if w := lipgloss.Width(l); w != 40 {
+						t.Errorf("avatars=%v: card line %d is %d cells, want 40: %q", avatars, n+1, w, ansi.Strip(l))
+					}
+				}
 			}
 		})
 	}
 }
 
-// renderLines lays cards out as two content lines each with one blank
-// separator between adjacent cards (none after the last), matching the
-// Threads view. No line may contain a newline.
+// renderLines lays cards out as three content lines each with one rule
+// between adjacent cards (none after the last), as Slack's feed
+// separates them. No line may contain a newline.
 func TestRenderLinesSeparatesCards(t *testing.T) {
 	m := New(nil, "")
 	m.SetItems([]core.ActivityItem{
@@ -182,16 +205,143 @@ func TestRenderLinesSeparatesCards(t *testing.T) {
 		{Type: "thread_v2", ChannelID: "C3", TS: "3.3", Key: "c"},
 	})
 	lines := m.renderLines(0, 3*cardStride-1, 60)
-	if want := 3*2 + 2; len(lines) != want {
-		t.Fatalf("want %d lines (3 two-line cards + 2 separators), got %d", want, len(lines))
+	if want := 3*3 + 2; len(lines) != want {
+		t.Fatalf("want %d lines (3 three-line cards + 2 separators), got %d", want, len(lines))
 	}
 	for i, l := range lines {
 		if strings.Contains(l, "\n") {
 			t.Fatalf("line %d contains a newline: %q", i, l)
 		}
-		isSeparator := i == 2 || i == 5
-		if blank := strings.TrimSpace(ansi.Strip(l)) == ""; blank != isSeparator {
-			t.Errorf("line %d blank=%v, want %v: %q", i, blank, isSeparator, ansi.Strip(l))
+		isSeparator := i == 3 || i == 7
+		if rule := strings.Contains(ansi.Strip(l), "───"); rule != isSeparator {
+			t.Errorf("line %d rule=%v, want %v: %q", i, rule, isSeparator, ansi.Strip(l))
+		}
+		if w := lipgloss.Width(l); w != 60 {
+			t.Errorf("line %d is %d cells, want 60", i, w)
+		}
+	}
+}
+
+// The card reads as Slack's does: who and when, what they said, where.
+func TestRenderCard_LayoutIsAuthorBodyThenWhere(t *testing.T) {
+	m := New(map[string]string{"U1": "alice"}, "")
+	m.SetChannelNames(map[string]string{"C1": "general"})
+	it := core.ActivityItem{Type: "thread_v2", ChannelID: "C1", TS: "1.1", AuthorID: "U1", IsUnread: true, FeedTS: "1700000000.0"}
+	m.SetItems([]core.ActivityItem{it})
+	m.SetBodies(map[string]core.ActivityMessage{core.ActivityMsgKey("C1", "1.1"): {Text: "the reply", UserID: "U1"}})
+
+	card := m.renderCard(it, 60, false)
+	plain := [cardContentLines]string{}
+	for i, l := range card {
+		plain[i] = strings.TrimRight(strings.TrimPrefix(ansi.Strip(l), "▌"), " ")
+	}
+	if !strings.HasPrefix(plain[0], "⚑ alice  ") || !strings.HasSuffix(plain[0], "●") || !strings.Contains(plain[0], " days") {
+		t.Errorf("line 1 = %q, want glyph, author, age and the unread dot", plain[0])
+	}
+	if plain[1] != "  the reply" {
+		t.Errorf("line 2 = %q, want the body under the author", plain[1])
+	}
+	if plain[2] != "  Thread in #general" {
+		t.Errorf("line 3 = %q, want where it happened under the body", plain[2])
+	}
+	if !strings.Contains(card[0], "\x1b[1") {
+		t.Errorf("unread author is not bold: %q", card[0])
+	}
+	it.IsUnread = false
+	read := m.renderCard(it, 60, false)[0]
+	if i := strings.Index(read, "alice"); i < 0 || strings.Contains(read[:i], "\x1b[1;") || strings.Contains(read[:i], "\x1b[1m") {
+		t.Errorf("read author is bold, or missing: %q", read)
+	}
+}
+
+// kittyAvatar is a 4x2 kitty placement, as the avatar cache hands one
+// out, whose image ID ends in id.
+func kittyAvatar(id int) string {
+	row := func(mark rune) string {
+		var b strings.Builder
+		b.WriteString("\x1b[38;2;0;1;" + string(rune('0'+id)) + "m")
+		for _, col := range []rune{'̅', '̍', '̎', '̐'} {
+			b.WriteRune('\U0010EEEE')
+			b.WriteRune(mark)
+			b.WriteRune(col)
+		}
+		return b.String() + "\x1b[39m"
+	}
+	return row('̅') + "\n" + row('̍')
+}
+
+// With avatars, the author's sits beside lines 1 and 2, and a DM card
+// shows the other person's even when you wrote last.
+func TestRenderCard_AvatarBesideTheCard(t *testing.T) {
+	m := New(map[string]string{"U1": "alice", "USELF": "me"}, "USELF")
+	m.SetChannelNames(map[string]string{"D1": "alice", "C1": "general"})
+	m.SetChannelTypes(map[string]string{"D1": "dm"})
+	m.SetDMPeers(map[string]string{"D1": "U1"})
+	asked := map[string]int{}
+	m.SetAvatarFunc(func(userID string) string {
+		asked[userID]++
+		if userID == "U1" {
+			return kittyAvatar(1)
+		}
+		return ""
+	})
+	dm := core.ActivityItem{Type: "dm", ChannelID: "D1", TS: "1.1"}
+	reminder := core.ActivityItem{Type: "saved_reminder", Key: "r"}
+	m.SetItems([]core.ActivityItem{dm, reminder})
+	m.SetBodies(map[string]core.ActivityMessage{core.ActivityMsgKey("D1", "1.1"): {Text: "thanks", UserID: "USELF"}})
+
+	top, bottom, _ := strings.Cut(kittyAvatar(1), "\n")
+	for _, selected := range []bool{false, true} {
+		card := m.renderCard(dm, 60, selected)
+		if !strings.Contains(card[0], top) || !strings.Contains(card[1], bottom) {
+			t.Fatalf("selected=%v: the other person's avatar is not intact beside lines 1 and 2", selected)
+		}
+		if strings.Contains(card[2], "\U0010EEEE") {
+			t.Errorf("selected=%v: avatar ran into line 3", selected)
+		}
+		for n, l := range card {
+			if w := lipgloss.Width(l); w != 60 {
+				t.Errorf("selected=%v: line %d is %d cells beside a kitty avatar, want 60", selected, n+1, w)
+			}
+		}
+		for n, want := range []string{"alice", "You: thanks", "Direct message"} {
+			if got := ansi.Strip(card[n]); !strings.Contains(got, strings.Repeat(" ", avatarGutter-4)+want) {
+				t.Errorf("selected=%v: line %d = %q, want %q after the avatar's gutter", selected, n+1, got, want)
+			}
+		}
+	}
+	if asked["USELF"] != 0 {
+		t.Error("a DM card asked for your own avatar")
+	}
+	if got := strings.TrimPrefix(ansi.Strip(m.renderCard(reminder, 60, false)[0]), "▌"); !strings.HasPrefix(got, " ◷   Reminder") {
+		t.Errorf("card with no avatar = %q, want its glyph in the avatar's place", got)
+	}
+
+	v := m.Version()
+	m.HandleAvatarReady("U9")
+	if m.Version() == v {
+		t.Error("an avatar loading did not redraw the list")
+	}
+}
+
+func TestView_HeadingCountsUnreadAndNamesTheFilter(t *testing.T) {
+	m := New(nil, "")
+	m.SetItems([]core.ActivityItem{{Key: "a", Type: "dm", IsUnread: true}, {Key: "b", Type: "dm"}})
+	first := func() string { return strings.TrimRight(ansi.Strip(strings.SplitN(m.View(12, 50), "\n", 2)[0]), " ") }
+	if got := first(); got != " Activity  ·  1 unread" {
+		t.Errorf("heading = %q", got)
+	}
+	m.ToggleUnreadOnly()
+	if got := first(); got != " Activity  ·  1 unread  ·  unreads only" {
+		t.Errorf("heading with the filter on = %q", got)
+	}
+	m.SetItems(nil)
+	if out := ansi.Strip(m.View(12, 50)); !strings.HasPrefix(out, " Activity  ·  unreads only") || !strings.Contains(out, "no unread activity") {
+		t.Errorf("empty list lost its heading or its note:\n%s", out)
+	}
+	for _, h := range []int{1, 2, 3, 12} {
+		if got := len(strings.Split(m.View(h, 50), "\n")); got != h {
+			t.Errorf("View(%d) returned %d rows", h, got)
 		}
 	}
 }
@@ -234,7 +384,7 @@ func TestRenderCard_PreviewRendersSlackMarkup(t *testing.T) {
 		core.ActivityMsgKey("C1", "1.1"): {Text: ":wave: hello see <#C9>", UserID: "U1"},
 	})
 
-	_, l2 := m.renderCard(it, 80, false)
+	l2 := m.renderCard(it, 80, false)[1]
 	plain := ansi.Strip(l2)
 	for _, want := range []string{"👋", "hello", "#hiring"} {
 		if !strings.Contains(plain, want) {
@@ -267,7 +417,7 @@ func TestRenderCard_SelectedPreviewKeepsSelectionTint(t *testing.T) {
 		core.ActivityMsgKey("C1", "1.1"): {Text: "see <#C9> after"},
 	})
 
-	_, l2 := m.renderCard(it, 60, true)
+	l2 := m.renderCard(it, 60, true)[1]
 	i := strings.Index(l2, "after")
 	if i < 0 {
 		t.Fatalf("preview missing text: %q", ansi.Strip(l2))
@@ -354,8 +504,7 @@ func TestRenderCard_CardBackgroundIsUnbroken(t *testing.T) {
 				selected bool
 				want     string
 			}{{true, tint}, {false, themeBg}} {
-				l1, l2 := m.renderCard(c.it, 80, sel.selected)
-				for n, line := range []string{l1, l2} {
+				for n, line := range m.renderCard(c.it, 80, sel.selected) {
 					for i, bg := range bgPerCell(line) {
 						if bg != sel.want {
 							t.Errorf("selected=%v line %d cell %d background = %q, want %s\n%q",
@@ -369,16 +518,26 @@ func TestRenderCard_CardBackgroundIsUnbroken(t *testing.T) {
 	}
 }
 
-// A reaction card leads with the reaction itself, rendered as an emoji.
+// A reaction card says what was reacted with, rendered as an emoji, and
+// to what, as Slack words it; line 3 then only names the conversation.
 func TestRenderCard_ReactionRendersEmoji(t *testing.T) {
-	m := New(nil, "")
-	it := core.ActivityItem{Type: "message_reaction", ChannelID: "C1", TS: "1.1", Reaction: "eyes"}
+	m := New(map[string]string{"U1": "alice"}, "")
+	m.SetChannelNames(map[string]string{"C1": "general"})
+	it := core.ActivityItem{Type: "message_reaction", ChannelID: "C1", TS: "1.1", Reaction: "eyes", AuthorID: "U1"}
 	m.SetItems([]core.ActivityItem{it})
 
-	_, l2 := m.renderCard(it, 80, false)
-	plain := ansi.Strip(l2)
-	if !strings.Contains(plain, "👀") || strings.Contains(plain, ":eyes:") {
-		t.Errorf("reaction preview = %q, want the 👀 emoji and no :eyes: shortcode", plain)
+	card := m.renderCard(it, 80, false)
+	plain := ansi.Strip(card[1])
+	if !strings.Contains(plain, "Reacted 👀") || strings.Contains(plain, ":eyes:") {
+		t.Errorf("reaction preview = %q, want \"Reacted\", the 👀 emoji and no :eyes: shortcode", plain)
+	}
+	m.SetBodies(map[string]core.ActivityMessage{core.ActivityMsgKey("C1", "1.1"): {Text: "ship it"}})
+	card = m.renderCard(it, 80, false)
+	if plain := ansi.Strip(card[1]); !strings.Contains(plain, "Reacted 👀 to: ship it") {
+		t.Errorf("reaction preview = %q, want it to quote the message", plain)
+	}
+	if where := strings.TrimSpace(strings.TrimPrefix(ansi.Strip(card[2]), "▌")); where != "#general" {
+		t.Errorf("line 3 = %q, want just the conversation", where)
 	}
 }
 
@@ -387,7 +546,7 @@ func TestContextVerb(t *testing.T) {
 		"at_user": "Mention", "at_channel": "Mention", "at_everyone": "Mention",
 		"at_user_group": "Mention", "keyword": "Mention", "list_user_mentioned": "Mention",
 		"thread_v2": "Thread", "message_reaction": "Reacted",
-		"dm": "DM", "bot_dm_bundle": "DM",
+		"dm": "Direct message", "bot_dm_bundle": "Direct message",
 		"saved_reminder": "Reminder",
 		"":               "", "something_new": "",
 	}
@@ -402,11 +561,11 @@ func TestContextVerb(t *testing.T) {
 func TestContextLabel(t *testing.T) {
 	m := New(nil, "")
 	m.SetChannelNames(map[string]string{"C1": "general"})
-	dm := m.contextLabel(core.ActivityItem{Type: "dm", ChannelID: "C1"})
-	if strings.Contains(dm, "general") || strings.Contains(dm, "#") {
-		t.Fatalf("DM context should omit channel, got %q", dm)
+	dm := m.contextLabel(core.ActivityItem{Type: "dm", ChannelID: "C1"}, true)
+	if strings.Contains(dm, "general") || strings.Contains(dm, "#") || !strings.Contains(dm, "Direct message") {
+		t.Fatalf("DM context should say \"Direct message\" and omit the channel, got %q", dm)
 	}
-	mention := m.contextLabel(core.ActivityItem{Type: "at_user", ChannelID: "C1"})
+	mention := m.contextLabel(core.ActivityItem{Type: "at_user", ChannelID: "C1"}, true)
 	if !strings.Contains(mention, "#general") {
 		t.Fatalf("mention context should contain #general, got %q", mention)
 	}
@@ -415,27 +574,32 @@ func TestContextLabel(t *testing.T) {
 // The context names the conversation the way the rest of slk does: "#"
 // only for public channels, "◆" for private ones, "●" for group DMs, and
 // just "DM" for a 1:1 DM (the other person is already on the card).
+// Without the verb it is the conversation alone.
 func TestContextLabel_ByConversationType(t *testing.T) {
 	m := New(nil, "")
 	m.SetChannelNames(map[string]string{
-		"C1": "general", "G1": "secret", "D1": "Drew Gilliam", "M1": "Pav, Grant Ammons, Tom Hudson",
+		"C1": "general", "G1": "secret", "D1": "Drew Gilliam", "M1": "Pav, Grant Ammons, Tom Hudson", "A1": "okta",
 	})
 	m.SetChannelTypes(map[string]string{
-		"C1": "channel", "G1": "private", "D1": "dm", "M1": "group_dm",
+		"C1": "channel", "G1": "private", "D1": "dm", "M1": "group_dm", "A1": "app",
 	})
 	cases := []struct {
-		name, typ, ch, want string
+		name, typ, ch, want, bare string
 	}{
-		{"public channel", "at_user", "C1", "Mention in #general"},
-		{"private channel", "at_user", "G1", "Mention in ◆ secret"},
-		{"1:1 DM", "message_reaction", "D1", "Reacted in DM"},
-		{"group DM", "at_user", "M1", "Mention in ● Pav, Grant Ammons, Tom Hudson"},
-		{"unknown type falls back to #", "at_user", "CX", "Mention in #CX"},
+		{"public channel", "at_user", "C1", "Mention in #general", "#general"},
+		{"private channel", "at_user", "G1", "Mention in ◆ secret", "◆ secret"},
+		{"1:1 DM", "message_reaction", "D1", "Reacted in DM", "Direct message"},
+		{"app", "thread_v2", "A1", "Thread in App", "App"},
+		{"group DM", "at_user", "M1", "Mention in ● Pav, Grant Ammons, Tom Hudson", "● Pav, Grant Ammons, Tom Hudson"},
+		{"unknown type falls back to #", "at_user", "CX", "Mention in #CX", "#CX"},
 	}
 	for _, c := range cases {
-		got := ansi.Strip(m.contextLabel(core.ActivityItem{Type: c.typ, ChannelID: c.ch}))
-		if got != c.want {
+		it := core.ActivityItem{Type: c.typ, ChannelID: c.ch}
+		if got := ansi.Strip(m.contextLabel(it, true)); got != c.want {
 			t.Errorf("%s: contextLabel = %q, want %q", c.name, got, c.want)
+		}
+		if got := ansi.Strip(m.contextLabel(it, false)); got != c.bare {
+			t.Errorf("%s: contextLabel without the verb = %q, want %q", c.name, got, c.bare)
 		}
 	}
 }
@@ -455,7 +619,7 @@ func TestContextLabel_UnknownTypeIsNeverBlank(t *testing.T) {
 		{"empty type", "", "", "Unknown activity"},
 	}
 	for _, c := range cases {
-		got := ansi.Strip(m.contextLabel(core.ActivityItem{Type: c.typ, ChannelID: c.ch}))
+		got := ansi.Strip(m.contextLabel(core.ActivityItem{Type: c.typ, ChannelID: c.ch}, true))
 		if got != c.want {
 			t.Errorf("%s: contextLabel = %q, want %q", c.name, got, c.want)
 		}
@@ -464,7 +628,7 @@ func TestContextLabel_UnknownTypeIsNeverBlank(t *testing.T) {
 
 func TestRenderCard_UnknownTypeWithNoRefIsLabelled(t *testing.T) {
 	m := New(nil, "")
-	line1, _ := m.renderCard(core.ActivityItem{Key: "k", Type: "brand_new_type", FeedTS: "1700000000.000000", IsUnread: true}, 80, false)
+	line1 := m.renderCard(core.ActivityItem{Key: "k", Type: "brand_new_type", FeedTS: "1700000000.000000", IsUnread: true}, 80, false)[0]
 	if got := ansi.Strip(line1); !strings.Contains(got, "Brand new type") {
 		t.Errorf("card line 1 = %q, want it to name the item type", got)
 	}
@@ -490,10 +654,14 @@ func TestRenderCard_DMHeadedByConversation(t *testing.T) {
 			m.SetBodies(map[string]core.ActivityMessage{
 				core.ActivityMsgKey("D1", "1.1"): {Text: "thanks", UserID: c.from},
 			})
-			l1, l2 := m.renderCard(it, 80, false)
+			card := m.renderCard(it, 80, false)
+			l1, l2 := card[0], card[1]
 			head := ansi.Strip(l1)
 			if !strings.Contains(head, "Alex Lazar") || strings.Contains(head, "me ") {
 				t.Errorf("header = %q, want it headed by the conversation, not the sender", head)
+			}
+			if where := strings.TrimSpace(strings.TrimPrefix(ansi.Strip(card[2]), "▌")); where != "Direct message" {
+				t.Errorf("line 3 = %q, want \"Direct message\"", where)
 			}
 			body := strings.TrimSpace(strings.TrimPrefix(ansi.Strip(l2), "▌"))
 			if want := c.wantPrefix + "thanks"; !strings.HasPrefix(body, want) {
@@ -515,14 +683,14 @@ func TestRenderCard_AuthorFallbackToBody(t *testing.T) {
 	m.SetBodies(map[string]core.ActivityMessage{
 		core.ActivityMsgKey("C1", "1.1"): {Text: "the reply", UserID: "U9"},
 	})
-	l1, _ := m.renderCard(it, 60, false)
+	l1 := m.renderCard(it, 60, false)[0]
 	if !strings.Contains(l1, "alice") {
 		t.Fatalf("author should fall back to hydrated body user 'alice', got line1=%q", l1)
 	}
 }
 
-// A click on either line of a card selects that card; a click on a
-// separator or past the last card selects nothing.
+// A click on any line of a card selects that card; a click on the
+// heading, a separator or past the last card selects nothing.
 func TestClickAtStride(t *testing.T) {
 	m := New(nil, "")
 	m.SetItems([]core.ActivityItem{
@@ -530,19 +698,20 @@ func TestClickAtStride(t *testing.T) {
 		{Type: "dm", ChannelID: "C2", TS: "2.2", Key: "b"},
 		{Type: "thread_v2", ChannelID: "C3", TS: "3.3", Key: "c"},
 	})
-	// Card 0 occupies rows 0,1; separator 2; card 1 rows 3,4; separator
-	// 5; card 2 rows 6,7.
+	// The heading and its blank row are rows 0,1. Card 0 occupies rows
+	// 2-4; separator 5; card 1 rows 6-8; separator 9; card 2 rows 10-12.
 	for _, tc := range []struct {
 		rowY    int
 		wantOK  bool
 		wantSel int
 	}{
-		{0, true, 0}, {1, true, 0},
-		{2, false, 0},
-		{3, true, 1}, {4, true, 1},
+		{0, false, 0}, {1, false, 0},
+		{2, true, 0}, {4, true, 0},
 		{5, false, 0},
-		{6, true, 2}, {7, true, 2},
-		{8, false, 0}, {-1, false, 0},
+		{6, true, 1}, {8, true, 1},
+		{9, false, 0},
+		{10, true, 2}, {12, true, 2},
+		{13, false, 0}, {-1, false, 0},
 	} {
 		ok := m.ClickAt(tc.rowY)
 		if ok != tc.wantOK {
@@ -599,11 +768,11 @@ func TestPatchUserName_RecordsNameInOwnMap(t *testing.T) {
 // says where to read it instead of leaving line 2 blank (issue #285).
 func TestRenderCard_SavedReminder(t *testing.T) {
 	m := New(nil, "")
-	l1, l2 := m.renderCard(core.ActivityItem{
+	card := m.renderCard(core.ActivityItem{
 		Key: "k", Type: "saved_reminder", Subtype: "reminder",
 		FeedTS: "1700000000.000000", IsUnread: true,
 	}, 80, false)
-	line1, line2 := ansi.Strip(l1), ansi.Strip(l2)
+	line1, line2 := ansi.Strip(card[0]), ansi.Strip(card[1])
 	if !strings.Contains(line1, "◷ Reminder") || !strings.Contains(line1, "●") {
 		t.Errorf("line 1 = %q, want the reminder glyph, label and unread dot", line1)
 	}

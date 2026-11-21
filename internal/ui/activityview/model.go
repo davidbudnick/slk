@@ -6,10 +6,12 @@
 // symmetrically: callers push a fresh page via SetItems and read
 // SelectedItem to drive panel switching when the user activates a row.
 //
-// Each item renders as a two-line card: line 1 is author + activity context
-// ("Mention/Thread/Reacted in #ch", or "DM") + relative time; line 2 is the
+// Each item renders as Slack's feed draws it, a three-line card beside the
+// author's avatar: line 1 is the author and a relative time; line 2 is the
 // hydrated message-body preview (empty until the messages.list hydration
-// lands — see SetBodies).
+// lands — see SetBodies); line 3 says where it happened ("Direct message",
+// "Thread in #ch", "Mention in #ch"). A rule separates one card from the
+// next, and an "Activity" heading tops the list.
 package activityview
 
 import (
@@ -26,13 +28,23 @@ import (
 	"github.com/muesli/reflow/truncate"
 )
 
-// Each activity row is a two-line card (line 1: author + context + time;
-// line 2: the hydrated message-body preview) followed by one blank
-// separator line, except the last card. card i therefore starts at flat
-// line i*cardStride. Same layout and math as threadsview.
+// Each activity row is a three-line card (line 1: author + time; line 2:
+// the hydrated message-body preview; line 3: where it happened) followed
+// by one separator line, except the last card. card i therefore starts at
+// flat line i*cardStride.
 const (
-	cardContentLines = 2
+	cardContentLines = 3
 	cardStride       = cardContentLines + 1
+)
+
+// chromeRows is the heading and the blank row under it, above the list.
+const chromeRows = 2
+
+// A card's text starts after its icon: the author's four-cell avatar and
+// a space, or, when no avatars are drawn, the type glyph and a space.
+const (
+	avatarGutter = 5
+	glyphGutter  = 2
 )
 
 // reminderHint fills line 2 of a Slack reminder's card: the feed carries
@@ -88,7 +100,12 @@ type Model struct {
 	userNames    map[string]string
 	channelNames map[string]string
 	channelTypes map[string]string
-	selfUserID   string
+	// dmPeers maps a DM's channel ID to the other person's user ID, whose
+	// avatar heads that DM's card.
+	dmPeers    map[string]string
+	selfUserID string
+	// avatarFn draws a card's avatar; nil keeps the type glyphs.
+	avatarFn messages.AvatarFunc
 
 	// bodies holds hydrated message text/author for each item ref,
 	// keyed by core.ActivityMsgKey(channelID, ts). Filled by SetBodies
@@ -212,6 +229,30 @@ func (m *Model) SetChannelTypes(types map[string]string) {
 	}
 	m.channelTypes = types
 	m.dirty()
+}
+
+// SetDMPeers replaces the DM channel id -> other person's user id map.
+// No-op when content-equal to the current one.
+func (m *Model) SetDMPeers(peers map[string]string) {
+	if stringMapsEqual(m.dmPeers, peers) {
+		return
+	}
+	m.dmPeers = peers
+	m.dirty()
+}
+
+// SetAvatarFunc draws each card's avatar beside it, as Slack does. Nil
+// restores the type glyphs.
+func (m *Model) SetAvatarFunc(fn messages.AvatarFunc) {
+	m.avatarFn = fn
+	m.dirty()
+}
+
+// HandleAvatarReady redraws the list once an avatar has loaded.
+func (m *Model) HandleAvatarReady(string) {
+	if m.avatarFn != nil && len(m.items) > 0 {
+		m.dirty()
+	}
 }
 
 // stringMapsEqual reports whether two map[string]string have identical
@@ -381,9 +422,10 @@ func (m *Model) ViewportAtTop() bool {
 // panel-local Y inside the bordered messages-pane content area). Returns
 // true when a row was selected and the caller should follow up with the
 // open command; false for separator rows, the blank-fill region past the
-// last row, and negative rowY. A click on either line of a card maps to
-// the same item via absLine / cardStride.
+// last row, the heading, and negative rowY. A click on any line of a card
+// maps to the same item via absLine / cardStride.
 func (m *Model) ClickAt(rowY int) bool {
+	rowY -= chromeRows
 	if rowY < 0 {
 		return false
 	}
@@ -451,7 +493,30 @@ func (m *Model) View(height, width int) string {
 	if height < 1 {
 		height = 1
 	}
+	chrome := []string{m.title(width), blankLine(width)}
+	if height <= chromeRows {
+		return strings.Join(chrome[:height], "\n")
+	}
+	return strings.Join(chrome, "\n") + "\n" + m.list(height-chromeRows, width)
+}
 
+// title is the "Activity" heading over the list, as in Slack, with the
+// unread count and the unread-only filter when it is on.
+func (m *Model) title(width int) string {
+	t := lipgloss.NewStyle().Foreground(styles.TextPrimary).Background(styles.Background).Bold(true).Render("Activity")
+	note := ""
+	if n := m.UnreadCount(); n > 0 {
+		note += "  ·  " + strconv.Itoa(n) + " unread"
+	}
+	if m.unreadOnly {
+		note += "  ·  unreads only"
+	}
+	t += mutedStyle().Background(styles.Background).Render(note)
+	return lipgloss.NewStyle().Background(styles.Background).Width(width).Render(clipToWidth(" "+t, width))
+}
+
+// list renders the cards to `height` lines under the heading.
+func (m *Model) list(height, width int) string {
 	if len(m.items) == 0 {
 		msg := "no activity"
 		if m.unreadOnly {
@@ -521,9 +586,9 @@ func (m *Model) snapToSelected(height, totalLines int) {
 }
 
 // renderLines returns lines [start, end) of the flat line list -- each
-// item's two-line card, with a blank separator between adjacent cards, so
-// the windowing / snap / click math stays stride-based -- rendering only
-// the cards that overlap that range.
+// item's three-line card, with a rule between adjacent cards, so the
+// windowing / snap / click math stays stride-based -- rendering only the
+// cards that overlap that range.
 func (m *Model) renderLines(start, end, width int) []string {
 	if end <= start {
 		return nil
@@ -532,15 +597,14 @@ func (m *Model) renderLines(start, end, width int) []string {
 	var separator string
 	for i := start / cardStride; i < len(m.items) && i*cardStride < end; i++ {
 		base := i * cardStride
-		l1, l2 := m.renderCard(m.items[i], width, i == m.selected)
-		for j, line := range [cardContentLines]string{l1, l2} {
+		for j, line := range m.renderCard(m.items[i], width, i == m.selected) {
 			if abs := base + j; abs >= start && abs < end {
 				out = append(out, line)
 			}
 		}
 		if sep := base + cardContentLines; i < len(m.items)-1 && sep >= start && sep < end {
 			if separator == "" {
-				separator = blankLine(width)
+				separator = ruleLine(width)
 			}
 			out = append(out, separator)
 		}
@@ -553,21 +617,26 @@ func blankLine(width int) string {
 	return lipgloss.NewStyle().Width(width).Render("")
 }
 
-// renderCard returns the two lines for one activity item:
+// ruleLine is the hairline between two cards, as in Slack's feed, clear
+// of the selection border's column.
+func ruleLine(width int) string {
+	return lipgloss.NewStyle().Foreground(styles.Border).Background(styles.Background).
+		Render(" " + strings.Repeat("─", max(width-1, 0)))
+}
+
+// renderCard returns the three lines for one activity item, as Slack's
+// feed lays it out:
 //
-//	<glyph> <author>  <Verb> in #<channel>              <relTime> [●]
-//	  <body preview>            (reactions prefix the :emoji:)
+//	<avatar> <author>  <relTime>                              [●]
+//	<avatar> <body preview>      (a reaction: "Reacted :emoji: to: …")
+//	         <where>             ("Direct message", "Thread in #ch", …)
 //
-// Line 1 is author-first with a natural-language context ("Mention in
-// #x" / "Thread in #x" / "Reacted in #x" / "DM"), mirroring the desktop
-// Activity feed; line 2 is the hydrated message body (empty until the
-// messages.list fetch lands). Selection is a green left border (▌) on
-// both lines; unread items get a trailing dot on line 1.
-func (m *Model) renderCard(it core.ActivityItem, width int, selected bool) (string, string) {
-	contentWidth := width - 1
-	if contentWidth < 1 {
-		contentWidth = 1
-	}
+// The avatar is the author's, or the other person's on a DM card; with
+// no avatars drawn the type glyph leads line 1 instead. The author is
+// bold while the item is unread, which also puts a dot at the end of
+// line 1. Selection is a left border (▌) and a tint on all three lines.
+func (m *Model) renderCard(it core.ActivityItem, width int, selected bool) [cardContentLines]string {
+	contentWidth := max(width-1, 1)
 
 	body := m.bodies[core.ActivityMsgKey(it.ChannelID, it.TS)]
 
@@ -580,35 +649,47 @@ func (m *Model) renderCard(it core.ActivityItem, width int, selected bool) (stri
 	}
 	author := m.resolveUser(authorID)
 	// A DM row is about the conversation, so it is headed by the other
-	// person (the DM's name) rather than by whoever wrote last, which is
-	// often you.
+	// person (the DM's name and avatar) rather than by whoever wrote
+	// last, which is often you.
+	avatarID := authorID
 	if isDMItem(it.Type) {
 		if name := m.channelNames[it.ChannelID]; name != "" {
 			author = name
 		}
+		if peer := m.dmPeers[it.ChannelID]; peer != "" {
+			avatarID = peer
+		}
+	}
+	// A card nobody authored (a reminder, a type slk does not know) is
+	// headed by what it is, and line 3 then only says where.
+	headless := author == ""
+	where := m.contextLabel(it, !headless && it.Type != "message_reaction")
+	if headless {
+		author = verbLabel(it.Type)
 	}
 
-	left := activityGlyph(it.Type) + " "
-	if author != "" {
-		left += authorStyle().Render(author)
-	}
-	if ctx := m.contextLabel(it); ctx != "" {
-		if author != "" {
-			left += "  "
+	gutter := glyphGutter
+	icon := [2]string{activityGlyph(it.Type) + " ", "  "}
+	if m.avatarFn != nil {
+		gutter = avatarGutter
+		icon = [2]string{" " + activityGlyph(it.Type) + "   ", "     "}
+		if avatarID != "" {
+			if rows := strings.Split(m.avatarFn(avatarID), "\n"); len(rows) == 2 {
+				icon = [2]string{rows[0] + " ", rows[1] + " "}
+			}
 		}
-		left += ctx
+	}
+	textWidth := max(contentWidth-gutter, 1)
+
+	left := authorStyle(it.IsUnread).Render(author)
+	if rel := formatRelTime(it.FeedTS); rel != "" {
+		left += "  " + mutedStyle().Render(rel)
 	}
 	right := ""
-	if rel := formatRelTime(it.FeedTS); rel != "" {
-		right = mutedStyle().Render(rel)
-	}
 	if it.IsUnread {
-		if right != "" {
-			right += " "
-		}
-		right += unreadDotStyle().Render("●")
+		right = unreadDotStyle().Render("●")
 	}
-	line1 := layoutLine(left, right, contentWidth)
+	line1 := icon[0] + layoutLine(left, right, textWidth)
 
 	// Render the body the way the Threads view and message pane do, then
 	// fold it onto one line: a card has exactly cardContentLines lines,
@@ -618,13 +699,20 @@ func (m *Model) renderCard(it core.ActivityItem, width int, selected bool) (stri
 	if body.Text != "" {
 		preview = messages.RenderSlackMarkdownWith(body.Text, opts)
 	}
-	if detail := activityDetail(it); detail != "" {
-		detail = messages.RenderSlackMarkdownWith(detail, opts)
-		if preview != "" {
-			preview = detail + "  " + preview
-		} else {
-			preview = detail
+	if it.Type == "message_reaction" {
+		// "Reacted :emoji: to: <message>", less whatever is missing; a
+		// card nobody heads already says "Reacted" on line 1.
+		var parts []string
+		if !headless {
+			parts = append(parts, "Reacted")
 		}
+		if detail := activityDetail(it); detail != "" {
+			parts = append(parts, strings.TrimRight(messages.RenderSlackMarkdownWith(detail, opts), " "))
+		}
+		if preview != "" {
+			parts = append(parts, "to:", preview)
+		}
+		preview = strings.Join(parts, " ")
 	}
 	// The renderer leaves plain text unstyled, so set the base text colour
 	// here (the message pane does the same via styles.MessageText). Only
@@ -638,42 +726,67 @@ func (m *Model) renderCard(it core.ActivityItem, width int, selected bool) (stri
 		// span; on the selected card that must be the selection tint.
 		preview = messages.RepaintBgToSelectionTint(preview, m.focused)
 	}
-	line2 := "  "
+	line2 := ""
 	if isDMItem(it.Type) && preview != "" && m.selfUserID != "" && body.UserID == m.selfUserID {
 		// Outside bodyStyle: its closing reset would drop the body's
 		// text colour.
 		line2 += mutedStyle().Render("You: ")
 	}
-	line2 += bodyStyle().Render(preview)
+	line2 = icon[1] + clipToWidth(line2+bodyStyle().Render(preview), textWidth)
+	line3 := strings.Repeat(" ", gutter) + clipToWidth(where, textWidth)
 
-	return m.wrapLine(line1, contentWidth, selected), m.wrapLine(line2, contentWidth, selected)
+	return [cardContentLines]string{
+		m.wrapLine(line1, contentWidth, selected),
+		m.wrapLine(line2, contentWidth, selected),
+		m.wrapLine(line3, contentWidth, selected),
+	}
 }
 
-// contextLabel renders the natural-language activity context for line 1:
-// "Mention in #ch" / "Thread in #ch" / "Reacted in #ch" / "DM" (no channel
-// for DMs). An unrecognised type is labelled with the type itself; see
+// contextLabel renders line 3 of a card, where the activity happened:
+// "Direct message" for a DM card, else the conversation ("#ch"), led by
+// what happened there when withVerb is set ("Mention in #ch" / "Thread in
+// #ch"). An unrecognised type is labelled with the type itself; see
 // fallbackVerb.
-func (m *Model) contextLabel(it core.ActivityItem) string {
-	verb := contextVerb(it.Type)
-	if verb == "" {
-		verb = fallbackVerb(it.Type)
-	}
+func (m *Model) contextLabel(it core.ActivityItem, withVerb bool) string {
 	if isDMItem(it.Type) {
-		return mutedStyle().Render(verb)
+		return mutedStyle().Render(contextVerb(it.Type))
+	}
+	verb := ""
+	if withVerb {
+		verb = verbLabel(it.Type)
 	}
 	ch := m.resolveChannel(it.ChannelID)
-	if ch == "" {
+	chType := m.channelTypes[it.ChannelID]
+	switch {
+	case ch == "":
 		return mutedStyle().Render(verb)
-	}
-	switch chType := m.channelTypes[it.ChannelID]; chType {
-	case "dm":
+	case chType == "app" && verb == "":
+		return mutedStyle().Render("App")
+	case chType == "app":
+		return mutedStyle().Render(verb + " in App")
+	case chType == "dm" && verb == "":
+		return mutedStyle().Render(contextVerb("dm"))
+	case chType == "dm":
 		// The other person is already on the card as the author.
 		return mutedStyle().Render(verb + " in DM")
-	case "private", "group_dm":
-		return mutedStyle().Render(verb+" in ") + channelNameStyle().Render(messages.ChannelGlyph(chType)+" "+ch)
-	default:
-		return mutedStyle().Render(verb+" in ") + channelNameStyle().Render("#"+ch)
 	}
+	name := "#" + ch
+	if chType == "private" || chType == "group_dm" {
+		name = messages.ChannelGlyph(chType) + " " + ch
+	}
+	if verb != "" {
+		verb += " in "
+	}
+	return mutedStyle().Render(verb) + channelNameStyle().Render(name)
+}
+
+// verbLabel is an item type's Activity-feed verb, or the type itself
+// when slk does not know it.
+func verbLabel(itemType string) string {
+	if verb := contextVerb(itemType); verb != "" {
+		return verb
+	}
+	return fallbackVerb(itemType)
 }
 
 // isDMItem reports whether an activity type is a DM row, which is headed
@@ -693,7 +806,7 @@ func contextVerb(itemType string) string {
 	case "message_reaction":
 		return "Reacted"
 	case "dm", "bot_dm_bundle":
-		return "DM"
+		return "Direct message"
 	case "saved_reminder":
 		return "Reminder"
 	default:
@@ -713,9 +826,10 @@ func fallbackVerb(itemType string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
-// authorStyle renders the actor name in bold so it anchors the card.
-func authorStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Bold(true)
+// authorStyle renders the actor name, bold while the item is unread, as
+// Slack does.
+func authorStyle(unread bool) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(styles.TextPrimary).Bold(unread)
 }
 
 // layoutLine places `right` flush against the right edge of a width-column
@@ -820,8 +934,8 @@ func (m *Model) resolveUser(uid string) string {
 }
 
 // formatRelTime parses a Slack-style "1700000000.000000" timestamp and
-// returns a coarse "Nm ago" / "Nh ago" / "Nd ago" string. Empty /
-// unparseable inputs return "".
+// returns a coarse age worded as Slack's feed words it: "1 min" /
+// "5 mins" / "2 hrs" / "3 days". Empty / unparseable inputs return "".
 func formatRelTime(ts string) string {
 	if ts == "" {
 		return ""
@@ -834,16 +948,26 @@ func formatRelTime(ts string) string {
 	if err != nil {
 		return ""
 	}
-	d := time.Since(time.Unix(sec, 0))
+	return relAge(time.Since(time.Unix(sec, 0)))
+}
+
+// relAge words an age as Slack's feed does.
+func relAge(d time.Duration) string {
+	count := func(n time.Duration, unit string) string {
+		if n == 1 {
+			return "1 " + unit
+		}
+		return strconv.Itoa(int(n)) + " " + unit + "s"
+	}
 	switch {
 	case d < time.Minute:
 		return "now"
 	case d < time.Hour:
-		return strconv.Itoa(int(d/time.Minute)) + "m ago"
+		return count(d/time.Minute, "min")
 	case d < 24*time.Hour:
-		return strconv.Itoa(int(d/time.Hour)) + "h ago"
+		return count(d/time.Hour, "hr")
 	default:
-		return strconv.Itoa(int(d/(24*time.Hour))) + "d ago"
+		return count(d/(24*time.Hour), "day")
 	}
 }
 
