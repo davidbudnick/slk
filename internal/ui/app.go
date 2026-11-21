@@ -546,6 +546,9 @@ type App struct {
 	// which never resets.
 	previewRemovals   map[string]previewRemoval
 	previewRemovalSeq uint64
+	// leaving is the conversation /leave asked Slack to take the user
+	// out of, until Slack answers (see leave_conversation.go).
+	leaving string
 	// userProfile is the K-opened read-only "who is this person?"
 	// modal (see internal/ui/userprofile). profileSvc fetches the
 	// full profile; defaulted to noopProfileService in NewApp so the

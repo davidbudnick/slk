@@ -172,7 +172,8 @@ Each entry is backed by the capture it cites (§2). Aliases follow
 | `/status away`, `/status active` | as `/away` / `/active` but not a toggle. Only `/status away` is captured; `active` is by symmetry | same |
 | `/open #c`, `/join #c` | switch to the channel, joining it first if not a member | `(*App).openChannel(…)`, **extracted** from the channel finder's "joined → `sidebar.SelectByID` + `ChannelSelectedMsg`, else `channels.Join`" (`mode_channel_finder.go`, lines 37–50 today); the finder then calls it too. The ID comes from the new `slackfmt.MentionedChannelIDs` (§3.8). No `#c`, or a name that does not resolve → toast "No channel named …" |
 | `/msg @u [text]`, `/dm @u [text]` | open the DM; text, if any, is **pre-filled** in the DM's composer, not sent | the new-message flow as is: `channels.OpenConversation(userIDs, reqID)` → `NewMessageOpenedMsg` (in-flight guard, `hydrateNewConversation`, switch, focus). The user ID comes from `slackfmt.MentionedUserIDs`. The text is written with the new `compose.OfferDraft` (§3.8) when the open succeeds, before the switch restores the draft; an existing non-empty draft for that DM is kept and a toast says so. One `@user` only; anything else → toast with the usage |
-| bare `/status`, `/status <anything else>`, `/leave`, `/close`, `/part` | toast "/x isn't supported in slk yet" | `toastWithClear` |
+| `/leave`, `/close`, `/part` | leave the channel it was typed in (a private one after a confirmation), or close the DM; the view moves off it when Slack answers. Arguments → toast with the usage | `(*App).leaveConversation` (`leave_conversation.go`): `channels.Leave` → `ChannelLeftMsg`, or `(*App).closeConversation` for a DM |
+| bare `/status`, `/status <anything else>` | toast "/status isn't supported in slk yet" | `toastWithClear` |
 
 Pre-filling instead of sending is a deliberate difference from Slack: it needs
 no "send once the DM opens" state, and costs one Enter.

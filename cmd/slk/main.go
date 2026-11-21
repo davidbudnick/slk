@@ -1046,6 +1046,17 @@ func run() error {
 				}
 				return ui.ConversationClosedMsg{TeamID: wctx.TeamID, ChannelID: chIDStr}
 			},
+			Leave: func(channelID ids.ChannelID, channelName string) core.Msg {
+				chIDStr := string(channelID)
+				wctx := router.Active()
+				if wctx == nil {
+					return nil
+				}
+				if err := wctx.Client.LeaveChannel(context.Background(), chIDStr); err != nil {
+					return ui.ChannelLeaveFailedMsg{ChannelID: chIDStr, Name: channelName, Err: err}
+				}
+				return ui.ChannelLeftMsg{TeamID: wctx.TeamID, ChannelID: chIDStr}
+			},
 		}))
 
 		app.SetSearchService(core.NewSearchService(core.SearchServiceFuncs{

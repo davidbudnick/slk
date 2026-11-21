@@ -320,6 +320,7 @@ type ChannelServiceFuncs struct {
 	Lookup              ChannelLookupFunc
 	Join                JoinChannelFunc
 	Close               func(channelID ids.ChannelID, channelName string) Msg
+	Leave               func(channelID ids.ChannelID, channelName string) Msg
 	RecordVisit         ChannelVisitRecorder
 	MembershipFetch     func(channelID ids.ChannelID)
 	OpenConversation    func(userIDs []string, requestID uint64) Cmd
@@ -405,6 +406,13 @@ func (c channelAdapter) Close(channelID ids.ChannelID, channelName string) Msg {
 		return nil
 	}
 	return c.fns.Close(channelID, channelName)
+}
+
+func (c channelAdapter) Leave(channelID ids.ChannelID, channelName string) Msg {
+	if c.fns.Leave == nil {
+		return nil
+	}
+	return c.fns.Leave(channelID, channelName)
 }
 
 func (c channelAdapter) RecordVisit(channelID ids.ChannelID) {

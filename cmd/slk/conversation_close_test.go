@@ -134,3 +134,51 @@ func TestOnConversationOpened_LooksUpAGroupDMNamedByIDAlone(t *testing.T) {
 		t.Errorf("a failed lookup still added a row: %+v", h.wsCtx.Channels)
 	}
 }
+
+// A leave on any of the user's clients takes the channel's row out of
+// this workspace's sidebar set and tells the UI. The finder keeps a
+// public channel as one to join and drops a private one.
+func TestOnChannelLeft_RemovesTheRowAndTellsTheUI(t *testing.T) {
+	h, sender := closeHandler(true)
+	h.wsCtx.Channels = append(h.wsCtx.Channels, sidebar.ChannelItem{ID: "G9", Name: "secret", Type: "private"})
+	h.wsCtx.FinderItems = append(h.wsCtx.FinderItems,
+		core.ChannelFinderItem{ID: "C1", Name: "general", Type: "channel", Joined: true},
+		core.ChannelFinderItem{ID: "G9", Name: "secret", Type: "private", Joined: true},
+	)
+
+	h.OnChannelLeft("C1")
+	h.OnChannelLeft("G9")
+
+	for _, item := range h.wsCtx.Channels {
+		if item.ID == "C1" || item.ID == "G9" {
+			t.Fatalf("a left channel is still in the sidebar set: %+v", h.wsCtx.Channels)
+		}
+	}
+	for _, item := range h.wsCtx.FinderItems {
+		if item.ID == "G9" || (item.ID == "C1" && item.Joined) {
+			t.Errorf("finder items = %+v; want general as one to join and secret gone", h.wsCtx.FinderItems)
+		}
+	}
+	if len(sender.sent) != 2 ||
+		sender.sent[0] != (ui.ChannelLeftMsg{TeamID: "T1", ChannelID: "C1"}) ||
+		sender.sent[1] != (ui.ChannelLeftMsg{TeamID: "T1", ChannelID: "G9"}) {
+		t.Errorf("UI messages = %#v; want a ChannelLeftMsg for C1, then G9", sender.sent)
+	}
+}
+
+// A leave of a DM or of a channel this workspace does not list changes
+// nothing, and an inactive workspace's UI is not told.
+func TestOnChannelLeft_LeavesWhatItShould(t *testing.T) {
+	h, sender := closeHandler(true)
+	h.OnChannelLeft("D1")
+	h.OnChannelLeft("C404")
+	if len(h.wsCtx.Channels) != 3 || len(sender.sent) != 0 {
+		t.Errorf("a DM or an unknown channel was left: rows %+v, messages %+v", h.wsCtx.Channels, sender.sent)
+	}
+
+	h, sender = closeHandler(false)
+	h.OnChannelLeft("C1")
+	if len(h.wsCtx.Channels) != 2 || len(sender.sent) != 0 {
+		t.Errorf("inactive workspace: rows %+v, messages %+v; want the row gone and no message", h.wsCtx.Channels, sender.sent)
+	}
+}

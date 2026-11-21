@@ -220,6 +220,27 @@ func (m *Model) MarkJoined(channelID string) {
 	}
 }
 
+// MarkLeft records that the user left a channel: a public one is
+// offered as one to join, and a private one, which only an invitation
+// brings back, is no longer offered.
+func (m *Model) MarkLeft(channelID string) {
+	for i := range m.items {
+		if m.items[i].ID != channelID || m.items[i].Synthetic {
+			continue
+		}
+		if m.items[i].Type == "private" {
+			m.items = append(m.items[:i], m.items[i+1:]...)
+			m.pruneStatuses()
+		} else {
+			m.items[i].Joined = false
+		}
+		if m.visible {
+			m.filter()
+		}
+		return
+	}
+}
+
 // UpdateLastVisited sets the LastVisited timestamp for the matching
 // item, if any, and re-runs filter() if the overlay is currently
 // visible so the new ordering takes effect on the next render. No-op

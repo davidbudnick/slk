@@ -439,7 +439,7 @@ func TestSlashRefusalsGiveTheTextBack(t *testing.T) {
 	}{
 		{"/msg hello there", "Usage: /msg @someone [message]", false},
 		{"/msg @nobody hi", "No one called @nobody", false},
-		{"/leave", "/leave isn't supported in slk yet", false},
+		{"/leave #random", "Usage: /leave", false},
 		{"/status :palm_tree: on holiday", "/status isn't supported in slk yet", false},
 		{"/open", "Usage: /open #channel", false},
 		{"/open #nope", "No channel named #nope", true},
@@ -528,26 +528,26 @@ func TestSlashBuiltin_RefusalFromTheThreadComposerGivesTheTextBackThere(t *testi
 	a, _, _, _ := openSlashApp(t)
 	showThread(t, a)
 	a.threadCompose.SetDraftContext("T1", "C1", "10.0")
-	a.threadCompose.SetValue("/leave")
+	a.threadCompose.SetValue("/status")
 	_ = pressEnter(a)
-	if got := a.threadCompose.Value(); got != "/leave" {
+	if got := a.threadCompose.Value(); got != "/status" {
 		t.Errorf("thread compose = %q, want the typed text back", got)
 	}
 	if got := a.compose.Value(); got != "" {
 		t.Errorf("channel compose = %q, want untouched", got)
 	}
-	if !strings.Contains(statusbarText(a), "/leave isn't supported in slk yet") {
+	if !strings.Contains(statusbarText(a), "/status isn't supported in slk yet") {
 		t.Errorf("status bar = %q, want the toast", statusbarText(a))
 	}
 }
 
 func TestSlashUnsupportedBuiltins(t *testing.T) {
-	for _, name := range []string{"/leave", "/close", "/part"} {
-		t.Run(name, func(t *testing.T) {
+	for _, typed := range []string{"/status", "/status :palm_tree: on holiday"} {
+		t.Run(typed, func(t *testing.T) {
 			a, _ := slashApp(t, nil)
-			a.compose.SetValue(name)
+			a.compose.SetValue(typed)
 			_ = pressEnter(a)
-			if want := name + " isn't supported in slk yet"; !strings.Contains(statusbarText(a), want) {
+			if want := "/status isn't supported in slk yet"; !strings.Contains(statusbarText(a), want) {
 				t.Errorf("status bar = %q, want %q", statusbarText(a), want)
 			}
 		})
