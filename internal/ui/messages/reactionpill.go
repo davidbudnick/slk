@@ -31,7 +31,11 @@ import (
 // Every pill style sets a foreground anyway.
 func ReactionPillText(emojiStr string, count int, style lipgloss.Style, placedAsImage bool) string {
 	if placedAsImage {
-		return emojiStr + bubblesansi.ForegroundSGR(style.GetForeground()) + strconv.Itoa(count)
+		gap := ""
+		if CurrentLook().Slack {
+			gap = " "
+		}
+		return emojiStr + bubblesansi.ForegroundSGR(style.GetForeground()) + gap + strconv.Itoa(count)
 	}
 	return emojiStr + strconv.Itoa(count)
 }

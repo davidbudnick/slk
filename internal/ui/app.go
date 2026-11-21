@@ -443,6 +443,9 @@ type App struct {
 	replyAvatars  bool
 	// messageSlackStyle is [appearance] slack_style, for new windows.
 	messageSlackStyle bool
+	// messageLook is how message content is drawn: slack_style, the
+	// link glyph and the active workspace's own Slack settings.
+	messageLook messages.Look
 	// sidebarAvatarFn is nil unless the service draws sidebar avatars.
 	sidebarAvatarFn sidebar.AvatarFunc
 	// sidebarCountFn draws the sidebar's counts as images, with it.
@@ -1078,6 +1081,7 @@ func NewApp() *App {
 	// Seed the statusbar hint with the configured help key label so it
 	// stays accurate if the binding is ever changed.
 	app.statusbar.SetHelpHint(app.defaultHelpHint())
+	messages.SetLook(app.messageLook)
 	return app
 }
 
@@ -1466,6 +1470,11 @@ func (a *App) openReactionPicker(p contentPane, channelID string) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	return a.openReactionPickerFor(p, channelID, msg)
+}
+
+// openReactionPickerFor opens the emoji picker for msg in pane.
+func (a *App) openReactionPickerFor(p contentPane, channelID string, msg messages.MessageItem) tea.Cmd {
 	var existing []string
 	for _, r := range msg.Reactions {
 		if r.HasReacted {
@@ -3304,6 +3313,33 @@ func (a *App) SetMessageSlackStyle(enabled bool) {
 	for _, m := range a.allWinModels() {
 		m.SetSlackStyle(enabled)
 	}
+	a.applyMessageLook()
+}
+
+// SetLinkGlyph sets the glyph drawn before a bare link in Slack's look
+// ([appearance] link_glyph).
+func (a *App) SetLinkGlyph(glyph string) {
+	a.messageLook.LinkGlyph = glyph
+	a.applyMessageLook()
+}
+
+// setSlackDisplay takes the active workspace's own Slack settings.
+func (a *App) setSlackDisplay(underlineLinks, plainEmoji bool) {
+	a.messageLook.UnderlineLinks, a.messageLook.PlainEmoji = underlineLinks, plainEmoji
+	a.applyMessageLook()
+}
+
+// applyMessageLook installs the look message content is drawn with and
+// redraws what was drawn with the old one.
+func (a *App) applyMessageLook() {
+	a.messageLook.Slack = a.messageSlackStyle
+	if messages.CurrentLook() == a.messageLook {
+		return
+	}
+	messages.SetLook(a.messageLook)
+	a.invalidateAllWinModelCaches()
+	a.threadPanel.InvalidateCache()
+	a.threadsView.InvalidateCache()
 }
 
 // replyAvatarFunc is the reply-row avatar source, nil when reply_avatars

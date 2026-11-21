@@ -138,6 +138,8 @@ type Context struct {
 	MaxRows     int // for full-size image blocks
 	MaxCols     int
 	UserNames   map[string]string // for resolving <@U…> mentions in mrkdwn
+	// Slack draws a link's preview as a card and dates a footer as Slack does.
+	Slack bool
 	// SendMsg is a tea.Cmd-style callback typed as func(any) so this
 	// package does not need to import bubbletea. Used by image-block
 	// prefetchers to signal completion. May be nil; when nil, image

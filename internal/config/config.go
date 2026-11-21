@@ -164,6 +164,9 @@ type Appearance struct {
 	// conversation shorter than the pane sits at its bottom, by the
 	// input. Default off.
 	SlackStyle bool `toml:"slack_style"`
+	// LinkGlyph is drawn before a link with no label of its own when
+	// SlackStyle is on, where Slack draws its link icon. "" for none.
+	LinkGlyph string `toml:"link_glyph"`
 	// FullNames shows people by their full name, as Slack does by
 	// default, where slk otherwise prefers the display name. Default
 	// off.
@@ -367,6 +370,7 @@ func Default() Config {
 			KittyPlacement:   "auto",
 			MaxImageRows:     20,
 			MaxImageCols:     60,
+			LinkGlyph:        "🔗",
 			MouseWheelLines:  3,
 			ClickOpensThread: true,
 			EmojiImages:      "on",

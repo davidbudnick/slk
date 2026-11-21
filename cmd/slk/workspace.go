@@ -8,6 +8,7 @@ import (
 	"github.com/gammons/slk/internal/core"
 	"github.com/gammons/slk/internal/service"
 	slackclient "github.com/gammons/slk/internal/slack"
+	"github.com/gammons/slk/internal/slack/boot"
 	"github.com/gammons/slk/internal/slack/edge"
 	"github.com/gammons/slk/internal/slack/membership"
 	"github.com/gammons/slk/internal/ui/sidebar"
@@ -85,6 +86,9 @@ type WorkspaceContext struct {
 	// foreground for muted channels. Nil when the bootstrap fetch
 	// failed or hasn't run yet — callers must nil-check before use.
 	MuteStore *service.MuteStore
+	// Display is the user's Slack settings for how messages look, from
+	// the boot response.
+	Display boot.DisplayPrefs
 	// ThreadsHasUnreads is the workspace-wide threads-have-any-unread
 	// signal returned by client.counts on startup. The local SQLite
 	// heuristic for per-thread unread state can produce false positives

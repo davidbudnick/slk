@@ -299,6 +299,8 @@ func connectWorkspace(ctx context.Context, token slackclient.Token, db *cache.DB
 		// it in later, and IsMuted is a safe no-op while not ready.
 		wctx.MuteStore = store
 	}
+	wctx.Display = res.Display
+	log.Printf("slack display prefs for %s: underline_links=%v jumbomoji=%v", token.TeamName, res.Display.UnderlineLinks, !res.Display.PlainEmoji)
 
 	// Thread subscriptions are deliberately NOT fetched here. The
 	// trigger is the WorkspaceReadyMsg the reducer handles after

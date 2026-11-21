@@ -1649,6 +1649,8 @@ func run() error {
 			PermalinkDomains:  snap.PermalinkDomains(teamID),
 			Theme:             snap.ResolveTheme(teamID),
 			SidebarWidth:      snap.ResolveWidth(teamID),
+			UnderlineLinks:    wctx.Display.UnderlineLinks,
+			PlainEmoji:        wctx.Display.PlainEmoji,
 			CollapsedSections: switchCollapsed,
 			Channels:          channels,
 			FinderItems:       wctx.FinderItems,
@@ -1929,6 +1931,8 @@ func run() error {
 				PermalinkDomains:  cfgSnap.PermalinkDomains(wctx.TeamID),
 				Theme:             cfgSnap.ResolveTheme(wctx.TeamID),
 				SidebarWidth:      cfgSnap.ResolveWidth(wctx.TeamID),
+				UnderlineLinks:    wctx.Display.UnderlineLinks,
+				PlainEmoji:        wctx.Display.PlainEmoji,
 				CollapsedSections: readyCollapsed,
 				// Detach both UI snapshots before the event owner starts.
 				Channels:    slices.Clone(wctx.Channels),

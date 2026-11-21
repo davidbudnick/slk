@@ -283,6 +283,7 @@ func reduceWorkspaceReady(a *App, m WorkspaceReadyMsg) tea.Cmd {
 		if m.SidebarWidth != 0 {
 			a.sidebar.SetWidth(m.SidebarWidth)
 		}
+		a.setSlackDisplay(m.UnderlineLinks, m.PlainEmoji)
 		a.sidebar.SetSectionsProvider(m.SectionsProvider)
 		a.sidebar.SetSavedCollapsedSections(m.CollapsedSections)
 		// Before the lists below, so they are filtered on first build.
@@ -482,6 +483,7 @@ func reduceWorkspaceSwitched(a *App, m WorkspaceSwitchedMsg) tea.Cmd {
 	if m.SidebarWidth != 0 {
 		a.sidebar.SetWidth(m.SidebarWidth)
 	}
+	a.setSlackDisplay(m.UnderlineLinks, m.PlainEmoji)
 	a.workspaceRail.SelectByID(m.TeamID)
 	a.syncStatusWorkspace()
 

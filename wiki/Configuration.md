@@ -47,7 +47,15 @@ reply_avatars = false     # true: Slack-style reply row, repliers' avatars + "N 
                           # (avatars need show_avatars and kitty graphics)
 slack_style = false       # true: messages laid out as Slack does. An author's messages
                           # sent within five minutes share one header, and a
-                          # conversation shorter than the pane sits at its bottom
+                          # conversation shorter than the pane sits at its bottom.
+                          # Message content follows: links without underline or
+                          # scheme, a pasted link's preview as a card with its
+                          # image at the right, a file's name over its image,
+                          # emoji-only messages drawn large, upright times, a "+"
+                          # pill after reactions and day labels on a rule
+link_glyph = "🔗"         # with slack_style: drawn before a link that has no label
+                          # of its own, where Slack draws its link icon. A Nerd
+                          # Font link ("") takes the link's colour; "" for none
 full_names = false        # true: show people by full name ("Ann Lee"), as Slack does
                           # by default, not by display name ("ann")
 colored_usernames = false # color each user's name by ID hash (Slack-style)

@@ -374,6 +374,9 @@ type (
 		PermalinkDomains []string // configured aliases for archive permalink routing
 		Theme            string   // resolved theme name (per-workspace or global default)
 		SidebarWidth     int      // resolved sidebar width (per-workspace or global default)
+		// UnderlineLinks and PlainEmoji are the user's own Slack
+		// settings: underlined links, and jumbo emoji switched off.
+		UnderlineLinks, PlainEmoji bool
 		// CollapsedSections is the workspace's saved collapsed sidebar
 		// sections, by header name; nil when it has none saved.
 		CollapsedSections []string
@@ -489,6 +492,9 @@ type (
 		PermalinkDomains []string // configured aliases for archive permalink routing
 		Theme            string   // resolved theme name (per-workspace or global default)
 		SidebarWidth     int      // resolved sidebar width (per-workspace or global default)
+		// UnderlineLinks and PlainEmoji are the user's own Slack
+		// settings: underlined links, and jumbo emoji switched off.
+		UnderlineLinks, PlainEmoji bool
 		// CollapsedSections is the workspace's saved collapsed sidebar
 		// sections, by header name; nil when it has none saved.
 		CollapsedSections []string

@@ -1083,3 +1083,26 @@ func TestPostFuncMatchesClientPostForm(t *testing.T) {
 		t.Fatal("PostFunc is nil after assignment")
 	}
 }
+
+// The two display preferences slk follows: underlined links, and jumbo
+// emoji, which is on unless Slack says otherwise.
+func TestPrefsDisplay(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		json string
+		want DisplayPrefs
+	}{
+		{"neither key", `{"emoji_mode":"default"}`, DisplayPrefs{}},
+		{"Slack's defaults", `{"underline_links":false,"jumbomoji":true}`, DisplayPrefs{}},
+		{"underlined links", `{"underline_links":true}`, DisplayPrefs{UnderlineLinks: true}},
+		{"jumbo emoji off", `{"jumbomoji":false}`, DisplayPrefs{PlainEmoji: true}},
+	} {
+		var p Prefs
+		if err := p.UnmarshalJSON([]byte(tc.json)); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if p.Display != tc.want {
+			t.Errorf("%s: Display = %+v, want %+v", tc.name, p.Display, tc.want)
+		}
+	}
+}

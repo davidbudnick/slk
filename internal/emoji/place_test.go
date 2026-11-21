@@ -535,3 +535,31 @@ func TestPlace_NegativeCache_DispatchesReadyMsgOnFailure(t *testing.T) {
 		t.Errorf("EmojiImageReadyMsg.URL = %q, want %q", msg.URL, badURL)
 	}
 }
+
+// PlaceRows hands back one string per row: blank while the image is
+// fetched for that size, the prerender once it is there.
+func TestPlaceRows(t *testing.T) {
+	ff := newFakeFetcher()
+	url := "https://a.slack-edge.com/...1f389.png"
+	ctx := PlaceContext{Fetcher: ff}
+
+	cold, flush, ok := PlaceRows(ctx, url, 4, 2)
+	if !ok || flush != nil || len(cold) != 2 || cold[0] != "    " || cold[1] != "    " {
+		t.Fatalf("cold PlaceRows = %q, flush set %v, ok %v; want two blank 4-cell rows", cold, flush != nil, ok)
+	}
+
+	ff.setPrerendered(EmojiCacheKey(url), goimage.Pt(4, 2), imgpkg.Render{
+		Lines:   []string{"AAAA", "BBBB"},
+		OnFlush: func(io.Writer) error { return nil },
+	})
+	warm, flush, ok := PlaceRows(ctx, url, 4, 2)
+	if !ok || flush == nil || len(warm) != 2 || warm[0] != "AAAA" || warm[1] != "BBBB" {
+		t.Errorf("warm PlaceRows = %q, flush set %v, ok %v; want the two prerendered rows", warm, flush != nil, ok)
+	}
+	if line, _, ok := Place(ctx, url, 2); !ok || line != "  " {
+		t.Errorf("Place at the ordinary size = %q, %v; the jumbo prerender must not stand in for it", line, ok)
+	}
+	if _, _, ok := PlaceRows(ctx, url, 4, 0); ok {
+		t.Error("PlaceRows with no rows reported ok")
+	}
+}

@@ -248,9 +248,19 @@ type Prefs struct {
 	// internal/slack — the wrong direction, since internal/slack is
 	// what will import this package. Callers parse.
 	AllNotificationsPrefs string
+	// Display is the preferences that change how messages are drawn.
+	Display DisplayPrefs
 	// Raw is the whole prefs object, undecoded, including the two
 	// fields above. Pulling those out is additive, not a move.
 	Raw json.RawMessage
+}
+
+// DisplayPrefs is the user's own Slack settings for how messages look.
+type DisplayPrefs struct {
+	// UnderlineLinks is Slack's "underline links to websites".
+	UnderlineLinks bool
+	// PlainEmoji is true when "show jumbomoji" is switched off.
+	PlainEmoji bool
 }
 
 // prefsWire is the tagged view of the two named prefs. It is separate
@@ -260,6 +270,8 @@ type Prefs struct {
 type prefsWire struct {
 	MutedChannels         string `json:"muted_channels"`
 	AllNotificationsPrefs string `json:"all_notifications_prefs"`
+	UnderlineLinks        bool   `json:"underline_links"`
+	Jumbomoji             *bool  `json:"jumbomoji"`
 }
 
 // UnmarshalJSON decodes the two named prefs and keeps the rest verbatim.
@@ -270,6 +282,10 @@ func (p *Prefs) UnmarshalJSON(b []byte) error {
 	}
 	p.MutedChannels = w.MutedChannels
 	p.AllNotificationsPrefs = w.AllNotificationsPrefs
+	p.Display = DisplayPrefs{
+		UnderlineLinks: w.UnderlineLinks,
+		PlainEmoji:     w.Jumbomoji != nil && !*w.Jumbomoji,
+	}
 	// Cloned, not aliased. This is encoding/json's stated contract for
 	// an Unmarshaler — "UnmarshalJSON must copy the JSON data if it
 	// wishes to retain the data after returning" — and aliasing here

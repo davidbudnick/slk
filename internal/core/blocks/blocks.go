@@ -167,6 +167,10 @@ type LegacyAttachment struct {
 	// original_url). Some unfurls carry it instead of from_url.
 	OriginalURL string
 	AuthorName  string
+	// ServiceName is the site a link preview names under its text.
+	ServiceName string
+	// ImageWidth and ImageHeight are ImageURL's pixel size; 0 when unknown.
+	ImageWidth, ImageHeight int
 	// Blocks holds Block Kit blocks nested inside the attachment.
 	// Slack's newer link-unfurl shape (Linear/Jira/GitHub issue
 	// cards, etc.) carries all visible content here while

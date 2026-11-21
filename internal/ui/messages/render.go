@@ -106,9 +106,10 @@ func codeBlockStyle() lipgloss.Style {
 		Padding(0, 1)
 }
 func linkStyle() lipgloss.Style {
+	l := CurrentLook()
 	return lipgloss.NewStyle().
 		Foreground(styles.Primary).
-		Underline(true)
+		Underline(!l.Slack || l.UnderlineLinks)
 }
 func mentionStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
@@ -880,6 +881,9 @@ func renderInlineFormattingWith(text string, opts RenderSlackMarkdownOpts) strin
 		// rune separately, so the line-level slackEntityDecoder pass
 		// below can no longer see "&amp;" once it is styled.
 		url, label := parts[1], slackEntityDecoder.Replace(parts[2])
+		if isBareLabel(url, label) {
+			label = bareLinkLabel(url)
+		}
 		return osc8Hyperlink(url, linkStyle().Render(label))
 	})
 
@@ -889,8 +893,7 @@ func renderInlineFormattingWith(text string, opts RenderSlackMarkdownOpts) strin
 	// mailto: scheme so terminal click-handlers can open a mail client.
 	text = linkBareRe.ReplaceAllStringFunc(text, func(match string) string {
 		url := linkBareRe.FindStringSubmatch(match)[1]
-		visible := strings.TrimPrefix(url, "mailto:")
-		return osc8Hyperlink(url, linkStyle().Render(visible))
+		return osc8Hyperlink(url, linkStyle().Render(bareLinkLabel(url)))
 	})
 
 	// Date tokens: <!date^TS^FORMAT|FALLBACK> -> local-formatted date.
