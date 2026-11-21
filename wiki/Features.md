@@ -33,6 +33,7 @@
 - Multi-line input, `Shift+Enter` for newlines
 - External editor (`Ctrl+E`) — opens the draft in `$VISUAL`, then `$EDITOR`, then `[compose] editor` from config; the edited text replaces the draft when the editor exits
 - Inline `@mention` autocomplete (resolves to `<@UserID>` on send)
+- Slash commands, with Slack's `/` menu: type `/` in an empty composer for the workspace's commands, each with its usage, its app and what it does; type to narrow, `Tab` or `Enter` to pick. See [[Commands]]. A command runs in the workspace Slack lists it under, which on Enterprise Grid is not the organization the session signs in to
 - Special mentions: `@here`, `@channel`, `@everyone`
 - Bracketed paste — paste multi-line text from the system clipboard without it being interpreted as keystrokes
 - Smart paste (`Ctrl+V`) — pastes a clipboard image as an attachment, or a copied file path as an attached file, or falls through to text. Multiple attachments + caption send together via Slack's V2 file-upload API. Note: use `Ctrl+V` (not your terminal's `Ctrl+Shift+V` paste shortcut) — terminal-initiated paste only delivers text, never image bytes.

@@ -136,6 +136,10 @@ type WorkspaceContext struct {
 	// rare conversations.history fallback; that stopped being true once
 	// emoji.list was restored to the normal path.
 	customEmoji atomic.Pointer[map[string]string]
+	// appCommands holds this workspace's slash commands for the
+	// composer's "/" menu: a whole slice swapped in, never changed.
+	// Access it via AppCommands/SetAppCommands.
+	appCommands atomic.Pointer[[]core.SlashCommand]
 	// customEmojiFreshFor is how long emoji.list can wait after connect,
 	// from bootCustomEmoji. Read once, on the goroutine that called
 	// connectWorkspace.
@@ -301,6 +305,25 @@ func (w *WorkspaceContext) CustomEmoji() map[string]string {
 // afterwards.
 func (w *WorkspaceContext) SetCustomEmoji(emojis map[string]string) {
 	w.customEmoji.Store(&emojis)
+}
+
+// AppCommands returns this workspace's slash commands, or nil before
+// client.appCommands has answered. Safe from any goroutine; the slice
+// must be treated as read-only.
+func (w *WorkspaceContext) AppCommands() []core.SlashCommand {
+	if w == nil {
+		return nil
+	}
+	if list := w.appCommands.Load(); list != nil {
+		return *list
+	}
+	return nil
+}
+
+// SetAppCommands publishes this workspace's slash commands. The caller
+// must not change the slice afterwards.
+func (w *WorkspaceContext) SetAppCommands(list []core.SlashCommand) {
+	w.appCommands.Store(&list)
 }
 
 // workspaceRouter is the program-wide registry of connected

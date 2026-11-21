@@ -440,6 +440,29 @@ func dialogGoldens() []dialogGolden {
 				typeInCompose(a, ":sm")
 			},
 		},
+		{
+			name:  "popup_command",
+			shown: func(a *App) bool { return a.compose.CommandPickerView(80) != "" },
+			open: func(t *testing.T, a *App) {
+				a.SetCommandService(core.NewCommandService(core.CommandServiceFuncs{
+					List: func() []core.SlashCommand {
+						return []core.SlashCommand{
+							{Name: "/shrug", Usage: "your text", Desc: "Appends ¯\\_(ツ)_/¯ to your message", Type: core.SlashCommandCore},
+							{Name: "/remind", Usage: "[@someone or #channel] [what] [when]", Desc: "Set a reminder", Type: core.SlashCommandCore},
+							{Name: "/dm", AliasOf: "/msg", Type: core.SlashCommandCore},
+							{Name: "/giphy", Usage: "[text]", Desc: "Post a random gif to channel", Type: core.SlashCommandService, AppName: "Giphy"},
+							{Name: "/standup", Desc: "Start the team's standup, with a description long enough that it cannot fit on one line of the popup", Type: core.SlashCommandApp, AppName: "Standup Bot"},
+							{Name: "/poll", Usage: "\"question\" \"option\"", Desc: "Ask a question", Type: core.SlashCommandApp, AppName: "Polls"},
+							{Name: "/deploy", Usage: "[service]", Desc: "Ship it", Type: core.SlashCommandApp, AppName: "Deploys"},
+						}
+					},
+				}))
+				a.SetMode(ModeInsert)
+				_ = a.compose.Focus()
+				typeInCompose(a, "/")
+				a.compose, _ = a.compose.Update(keyCode(tea.KeyDown))
+			},
+		},
 	}
 }
 

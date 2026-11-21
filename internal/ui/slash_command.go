@@ -13,6 +13,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/gammons/slk/internal/core"
 	"github.com/gammons/slk/internal/ids"
 	"github.com/gammons/slk/internal/ui/compose"
 )
@@ -67,6 +68,13 @@ var slashCommands = map[string]commandFunc{
 	"/leave":  slashUnsupported("/leave"),
 	"/close":  slashUnsupported("/close"),
 	"/part":   slashUnsupported("/part"),
+}
+
+// slashCommandList is what the composers' "/" menu offers: the active
+// workspace's commands as CommandService has them, read each time the
+// menu opens. Nothing is offered while they are unknown.
+func (a *App) slashCommandList() []core.SlashCommand {
+	return a.commandSvc.List()
 }
 
 // commandOrigin says where a slash command was typed: the conversation
