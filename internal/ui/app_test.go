@@ -993,6 +993,44 @@ func TestApp_ClickOnThreadInThreadsViewOpensIt(t *testing.T) {
 	}
 }
 
+// The sidebar draws avatars only with [sidebar] avatars on and a service
+// that can draw them, and redraws when one lands.
+func TestApp_SidebarAvatarsNeedTheSettingAndTheService(t *testing.T) {
+	a := NewApp()
+	a.width = 160
+	a.height = 30
+	a.sidebar.SetItems([]sidebar.ChannelItem{{ID: "D1", Name: "ann", Type: "dm", DMUserID: "U1"}})
+	asked := 0
+	plain := core.NewAvatarService(func(string) string { return "" }, nil)
+	withSidebar := core.NewSidebarAvatarService(plain, func(string, core.AvatarBadge) string {
+		asked++
+		return ""
+	})
+
+	a.SetAvatarService(withSidebar)
+	_ = a.View()
+	if asked != 0 {
+		t.Fatal("sidebar asked for avatars with the setting off")
+	}
+	a.SetSidebarAvatars(true)
+	_ = a.View()
+	if asked == 0 {
+		t.Fatal("sidebar did not ask for its DM's avatar")
+	}
+	asked = 0
+	a.Update(messages.AvatarReadyMsg{UserID: "U1"})
+	_ = a.View()
+	if asked == 0 {
+		t.Error("sidebar did not redraw when its DM's avatar landed")
+	}
+	asked = 0
+	a.SetAvatarService(plain)
+	_ = a.View()
+	if asked != 0 {
+		t.Error("sidebar still asks a service that cannot draw its avatars")
+	}
+}
+
 // TestApp_HandleEnterInThreadsViewOpensSelectedThread guards Bug A:
 // while the user is in the threads-list view, pressing Enter must
 // open the thread highlighted in `threadsView`, NOT the message

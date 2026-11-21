@@ -668,7 +668,17 @@ func run() error {
 			// this is a lookup.
 			sixelAvatar = avatarCache.GetSixel
 		}
-		app.SetAvatarService(core.NewSixelAvatarService(func(userID string) string {
+		var sidebarAvatar func(userID string, badge core.AvatarBadge) string
+		if proto == imgpkg.ProtoKitty {
+			sidebarAvatar = func(userID string, badge core.AvatarBadge) string {
+				if small := avatarCache.GetSidebar(userID, badge.Color, badge.Hollow); small != "" {
+					return small
+				}
+				lazyAvatar(router.Active(), avatarCache, userID)
+				return ""
+			}
+		}
+		app.SetAvatarService(core.NewSidebarAvatarService(core.NewSixelAvatarService(func(userID string) string {
 			return lazyAvatar(router.Active(), avatarCache, userID)
 		}, func(userID string) string {
 			if small := avatarCache.GetSmall(userID); small != "" {
@@ -676,7 +686,7 @@ func run() error {
 			}
 			lazyAvatar(router.Active(), avatarCache, userID)
 			return ""
-		}, sixelAvatar))
+		}, sixelAvatar), sidebarAvatar))
 	}
 
 	// Wire theme switcher: dispatch to the appropriate saver based on scope.

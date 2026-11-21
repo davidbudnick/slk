@@ -223,12 +223,17 @@ type Sidebar struct {
 	// ChannelIndent indents the rows under each section header by this
 	// many cells, as Slack does (0-6). Default 0.
 	ChannelIndent int `toml:"channel_indent"`
-	// SlackStyle draws the sidebar as Slack does: no "▾" on expanded
-	// headers, regular-weight headers, no unread dot, and names sorted
-	// ignoring punctuation. Default off.
+	// SlackStyle draws the sidebar as Slack does: headers start at
+	// their emoji with no "▾" (a collapsed one ends in "▸"),
+	// regular-weight headers, no unread dot, names sorted ignoring
+	// punctuation, and the open conversation's row filled. Default off.
 	SlackStyle bool `toml:"slack_style"`
 	// PrivateGlyph replaces "◆" before private channels (e.g. a lock).
 	PrivateGlyph string `toml:"private_glyph"`
+	// Avatars draws each DM's and app's avatar in place of its glyph,
+	// the peer's presence on its corner, as Slack does (kitty graphics
+	// only). Needs [appearance] show_avatars. Default off.
+	Avatars bool `toml:"avatars"`
 	// ActiveOnly hides conversations with no activity in 30 days, in
 	// every section, like Slack's "Active only" filter. Default off.
 	ActiveOnly bool `toml:"active_only"`

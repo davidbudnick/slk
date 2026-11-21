@@ -48,6 +48,8 @@ type uiSettings struct {
 	EnterKeepsFocus bool
 	// ClickOpensThread is [appearance] click_opens_thread (default on).
 	ClickOpensThread bool
+	// SidebarAvatars is [sidebar] avatars (default off).
+	SidebarAvatars bool
 }
 
 // sidebarStyleFromConfig is the [sidebar] look and behaviour switches.
@@ -84,6 +86,7 @@ func uiSettingsFromConfig(cfg config.Config) uiSettings {
 		WorkspacePickerVimKeys: cfg.General.WorkspacePickerVimKeys,
 		EnterKeepsFocus:        cfg.Sidebar.EnterKeepsFocus,
 		ClickOpensThread:       cfg.Appearance.ClickOpensThread,
+		SidebarAvatars:         cfg.Sidebar.Avatars,
 	}
 }
 
@@ -118,4 +121,5 @@ func applyUISettings(app *ui.App, s uiSettings) {
 	app.SetWorkspacePickerVimKeys(s.WorkspacePickerVimKeys)
 	app.SetEnterKeepsFocus(s.EnterKeepsFocus)
 	app.SetClickOpensThread(s.ClickOpensThread)
+	app.SetSidebarAvatars(s.SidebarAvatars)
 }

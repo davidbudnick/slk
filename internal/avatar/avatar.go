@@ -75,6 +75,8 @@ type Cache struct {
 	renders map[string]string      // userID -> rendered ANSI string
 	small   map[string]string      // userID -> SmallCols×SmallRows render
 	sixel   map[string]sixelAvatar // userID -> sixel image, when useSixel
+	sources map[string]image.Image // userID -> decoded avatar, when useKitty
+	sidebar map[string]string      // kitty key -> sidebar avatar render
 
 	// inflight tracks userIDs whose Preload is currently in-flight (or
 	// already rendered). Acts as a dedup gate so a hot render path
@@ -137,6 +139,8 @@ func newCacheForTest(fetcher *imgpkg.Fetcher, kitty *imgpkg.KittyRenderer, useKi
 		renders:   make(map[string]string),
 		small:     make(map[string]string),
 		sixel:     make(map[string]sixelAvatar),
+		sources:   make(map[string]image.Image),
+		sidebar:   make(map[string]string),
 		preloadCh: make(chan preloadJob, queueSize),
 		sizeURL:   func(u string) string { return SizedURL(u, sizedAvatarPx) },
 	}
@@ -246,6 +250,9 @@ func (c *Cache) preloadInner(userID, avatarURL string) {
 	}
 	c.mu.Lock()
 	c.renders[userID] = rendered
+	if c.useKitty {
+		c.sources[userID] = res.Img
+	}
 	if sx.bytes != nil {
 		c.sixel[userID] = sx
 	}
