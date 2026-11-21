@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1741,6 +1742,101 @@ func ParseMutedFromAllNotificationsPrefs(raw string) []string {
 		}
 	}
 	return out
+}
+
+// EmojiUsage is what Slack keeps about the emoji a user uses, which
+// its pickers and autocomplete rank by.
+type EmojiUsage struct {
+	// Counts is the emoji_use pref: all-time uses by short name, across
+	// the user's Slack clients.
+	Counts map[string]int
+	// Recent is the emoji in Slack's frecency store, which holds what
+	// the user has picked lately.
+	Recent []EmojiFrecency
+}
+
+// EmojiFrecency is one emoji's record in Slack's frecency store.
+type EmojiFrecency struct {
+	// ID is the emoji as the store keys it: a custom emoji's short
+	// name, a standard one's code points in hex ("1f44c",
+	// "1f44d-1f3fb").
+	ID string
+	// Count is how many times it was picked; LastUsed is when it last
+	// was, in Unix milliseconds.
+	Count    int
+	LastUsed int64
+}
+
+// emojiUsagePrefs are the prefs EmojiUsage asks for. The web client
+// asks for "emoji_use,frecency" at boot (reason fetch-frecency-prefs;
+// testdata/phase2-api-contracts.json); on Enterprise Grid frecency is
+// empty and the store is frecency_ent_jumper.
+const emojiUsagePrefs = "emoji_use,frecency,frecency_ent_jumper"
+
+// EmojiUsage reads the user's emoji use counts and frecency store with
+// one users.prefs.get. A user with no history gets empty results.
+func (c *Client) EmojiUsage(ctx context.Context) (EmojiUsage, error) {
+	body, err := c.postForm(ctx, "users.prefs.get", url.Values{"prefs": {emojiUsagePrefs}})
+	if err != nil {
+		return EmojiUsage{}, err
+	}
+	return parseEmojiUsage(body)
+}
+
+// parseEmojiUsage reads emoji_use and the frecency store from a
+// users.prefs.get response. Each is a string holding JSON: emoji_use an
+// object of name to count, the store an object whose emoji records are
+// keyed "E" plus the emoji's ID. A store that does not parse is
+// skipped: the counts alone still rank.
+func parseEmojiUsage(body []byte) (EmojiUsage, error) {
+	var parsed struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+		Prefs struct {
+			EmojiUse       string `json:"emoji_use"`
+			Frecency       string `json:"frecency"`
+			FrecencyJumper string `json:"frecency_ent_jumper"`
+		} `json:"prefs"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return EmojiUsage{}, fmt.Errorf("parsing users.prefs.get response: %w (body=%q)", err, truncateForLog(body))
+	}
+	if !parsed.OK {
+		return EmojiUsage{}, fmt.Errorf("users.prefs.get returned ok=false (error=%q)", parsed.Error)
+	}
+	usage := EmojiUsage{Counts: map[string]int{}}
+	if strings.TrimSpace(parsed.Prefs.EmojiUse) != "" {
+		if err := json.Unmarshal([]byte(parsed.Prefs.EmojiUse), &usage.Counts); err != nil {
+			return EmojiUsage{}, fmt.Errorf("parsing the emoji_use pref: %w", err)
+		}
+	}
+	for _, store := range []string{parsed.Prefs.FrecencyJumper, parsed.Prefs.Frecency} {
+		var records map[string]json.RawMessage
+		if strings.TrimSpace(store) == "" || json.Unmarshal([]byte(store), &records) != nil {
+			continue
+		}
+		for key, raw := range records {
+			var rec struct {
+				ID     string  `json:"id"`
+				Count  int     `json:"count"`
+				Visits []int64 `json:"visits"`
+			}
+			// Queries the user typed are in the store too, as lists.
+			if !strings.HasPrefix(key, "E") || json.Unmarshal(raw, &rec) != nil || rec.ID != key {
+				continue
+			}
+			var last int64
+			for _, v := range rec.Visits {
+				last = max(last, v)
+			}
+			usage.Recent = append(usage.Recent, EmojiFrecency{ID: key[1:], Count: rec.Count, LastUsed: last})
+		}
+		if len(usage.Recent) > 0 {
+			break
+		}
+	}
+	sort.Slice(usage.Recent, func(i, j int) bool { return usage.Recent[i].ID < usage.Recent[j].ID })
+	return usage, nil
 }
 
 // GetMutedChannelsRaw returns the raw users.prefs.get response body.

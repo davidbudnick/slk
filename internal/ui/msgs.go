@@ -526,6 +526,13 @@ type (
 		TeamID      string
 		CustomEmoji map[string]string
 	}
+	// EmojiUseLoadedMsg is sent when a workspace's emoji use counts
+	// have been read from Slack. If it is the active workspace the App
+	// reloads the emoji history the pickers rank by, which
+	// ReactionService.LoadFrecent now answers from those counts.
+	EmojiUseLoadedMsg struct {
+		TeamID string
+	}
 	// UserGroupsLoadedMsg is sent when a workspace's usergroups.list
 	// fetch finishes in the background. App refreshes render caches and
 	// compose mention entries only when TeamID matches the active workspace.

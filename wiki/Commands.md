@@ -66,8 +66,8 @@ posting the text.
 Type `/` in an empty composer and a menu lists the workspace's commands, as
 Slack's does: each with its usage and, under it, where it comes from and what
 it does (`App · Giphy · Post a random gif to channel`). Keep typing to narrow
-it: names that start with what you typed come first, then names that contain
-it. `↑`/`↓` (or `Ctrl+p`/`Ctrl+n`) move, `Tab` or `Enter` puts the selected
+it: names that start with what you typed come first, then names with a later
+word that does (`/ha` finds `/hangout`, then `/soc-handover`). `↑`/`↓` (or `Ctrl+p`/`Ctrl+n`) move, `Tab` or `Enter` puts the selected
 command in the composer for you to finish, and `Esc` closes the menu. `Enter`
 on the menu never runs a command; the next `Enter` does. A name the menu does
 not have shows no menu, and `Enter` runs it as typed. The list is read from

@@ -1485,19 +1485,27 @@ func run() error {
 				}
 				return wctx.Client.RemoveReaction(ctx, string(channelID), string(messageTS), emojiName)
 			},
-			// LoadFrecent: not workspace-specific, captures only db.
+			// LoadFrecent: Slack's use counts for the active workspace's
+			// user plus slk's own, or slk's own frecency until Slack's
+			// have been read.
 			func(limit int) []core.EmojiEntry {
 				names, err := db.GetFrecentEmoji(limit)
 				if err != nil {
 					return nil
+				}
+				slackUse := router.Active().EmojiUse()
+				if len(slackUse.counts) > 0 {
+					local, _ := db.EmojiUseCounts()
+					names = rankEmoji(slackUse.counts, local, names, limit)
 				}
 				codeMap := emojiwidth.CodeMap()
 				var entries []core.EmojiEntry
 				for _, name := range names {
 					unicode := codeMap[":"+name+":"]
 					entries = append(entries, core.EmojiEntry{
-						Name:    name,
-						Unicode: unicode,
+						Name:     name,
+						Unicode:  unicode,
+						Frequent: slackUse.frequent[name],
 					})
 				}
 				return entries
@@ -1913,6 +1921,11 @@ func run() error {
 			// "/" menu. Best-effort: without them the menu does not
 			// open, and typed commands still run.
 			go loadAppCommands(ctx, wctx, wctx.Client)
+
+			// Fetch the user's emoji use counts, which Slack's pickers
+			// rank by, as the web client does at boot. Best-effort:
+			// without them the pickers rank by slk's own history.
+			go loadEmojiUse(ctx, wctx, wctx.Client, p)
 
 			// Fetch workspace usergroups in the background. When done,
 			// send a follow-up so render caches and compose pickers can

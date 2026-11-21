@@ -108,6 +108,61 @@ func TestMatchPutsUsedEmojiFirst(t *testing.T) {
 	}
 }
 
+// The order Slack's own autocomplete gave for ":pepe" and ":ez", from
+// the data behind it. The history is in Slack's use-count order; the
+// frequently used are the ones Slack had used most lately. Its list
+// was those, by use count, with the exactly named emoji among them; an
+// emoji used often once but not lately (pepesad) waited behind them,
+// and a used emoji with the query inside a word (geez-omg) was not a
+// match at all. The emoji never used follow in entries' order: Slack
+// ranks those on its servers, and listed eze ahead of ez_llama.
+func TestMatchOrdersAsSlackDoes(t *testing.T) {
+	all := entries("bezos2", "ez", "ez_llama", "ez_robot", "eze", "eze-like", "ezequiss", "geez-omg",
+		"pepe", "pepe-2finger", "pepe-4560", "pepe-clap-peepoclap", "pepe-delux", "pepe-eyes", "pepe-king",
+		"pepe-salute", "pepe_ez", "pepe_fist", "pepecheers", "pepesad")
+	use := NewFrecency([]string{"pepe-salute", "pepe_ez", "pepe", "pepesad", "pepe-clap-peepoclap", "pepe_fist",
+		"pepe-delux", "pepe-eyes", "pepecheers", "pepe-king", "ez", "geez-omg", "bezos2"}).
+		WithFrequent([]string{"pepe_ez", "pepe-salute", "pepe_fist", "pepecheers", "pepe-eyes", "pepe-king"})
+	opt := MatchOptions{Frecency: use, Words: true}
+
+	got := names(Match(all, entryName, "pepe", opt))
+	if want := []string{"pepe-salute", "pepe_ez", "pepe", "pepe_fist", "pepe-eyes", "pepecheers", "pepe-king",
+		"pepesad", "pepe-clap-peepoclap", "pepe-delux", "pepe-2finger", "pepe-4560"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Match(\"pepe\") =\n %v, want\n %v", got, want)
+	}
+	got = names(Match(all, entryName, "ez", opt))
+	if want := []string{"ez", "pepe_ez", "ez_llama", "ez_robot", "eze", "eze-like", "ezequiss"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Match(\"ez\") = %v, want %v", got, want)
+	}
+
+	opt.Limit = 4
+	got = names(Match(all, entryName, "ez", opt))
+	if want := []string{"ez", "pepe_ez", "ez_llama", "ez_robot"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Match(\"ez\") capped at 4 = %v, want %v", got, want)
+	}
+
+	// A picker that searches inside words finds the rest of the
+	// history there too, ahead of what was never used.
+	got = names(Match(all, entryName, "ez", MatchOptions{Frecency: use, Words: true, Substring: true, Limit: 5}))
+	if want := []string{"ez", "pepe_ez", "geez-omg", "bezos2", "ez_llama"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Match(\"ez\") with Substring = %v, want %v", got, want)
+	}
+
+	// With no query the frequently used lead, then the rest of the
+	// history, then everything else in its alphabetical order.
+	got = names(Match(all, entryName, "", MatchOptions{Frecency: use, Limit: 9}))
+	if want := []string{"pepe-salute", "pepe_ez", "pepe_fist", "pepe-eyes", "pepecheers", "pepe-king", "pepe", "pepesad", "pepe-clap-peepoclap"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Match(\"\") = %v, want %v", got, want)
+	}
+
+	// A history that names no frequently used emoji leads as a whole.
+	plain := NewFrecency([]string{"pepesad", "pepe-salute"}).WithFrequent(nil)
+	got = names(Match(all, entryName, "pepe", MatchOptions{Frecency: plain, Limit: 3}))
+	if want := []string{"pepesad", "pepe-salute", "pepe"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Match(\"pepe\") without a frequent set = %v, want %v", got, want)
+	}
+}
+
 func TestMatchShowsAUsedEmojiOnce(t *testing.T) {
 	// "+1" and "thumbsup" are the same emoji; it was used as "+1".
 	all := entries("+1", "rocket", "thumbsup")
