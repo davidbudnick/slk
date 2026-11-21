@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/gammons/slk/internal/config"
 	"github.com/gammons/slk/internal/core"
 	"github.com/gammons/slk/internal/demo"
 	emojiwidth "github.com/gammons/slk/internal/emoji"
@@ -23,7 +24,8 @@ import (
 // cache, network or config writes. See
 // docs/superpowers/specs/2026-09-27-demo-mode-design.md.
 // SLK_DEMO_TRANSPARENT=1 turns on the transparent background, which a
-// user sets as [appearance] transparent_background.
+// user sets as [appearance] transparent_background. SLK_DEMO_LOOK names a
+// TOML file whose [appearance] and [sidebar] settings the demo takes.
 func runDemo(scenario string) error {
 	d, err := demo.New(scenario, time.Now())
 	if err != nil {
@@ -50,7 +52,11 @@ func runDemo(scenario string) error {
 		frames = imgpkg.NewSixelFrameStore()
 		opts = append(opts, tea.WithOutput(imgpkg.NewFrameOutput(os.Stdout, frames)))
 	}
-	app := newDemoApp(d)
+	settings, err := demoSettings(os.Getenv("SLK_DEMO_LOOK"))
+	if err != nil {
+		return err
+	}
+	app := newDemoApp(d, settings)
 	if frames != nil {
 		app.SetSixelFrameStore(frames)
 	}
@@ -89,18 +95,35 @@ func demoImageProtocol(value string) (imgpkg.Protocol, error) {
 	return imgpkg.ProtoOff, fmt.Errorf("SLK_DEMO_IMAGES=%q: want halfblock or sixel", value)
 }
 
-// newDemoApp builds the demo's App. It takes no config, token store or
-// cache handle, so demo mode cannot reach the user's real data.
-func newDemoApp(d *demo.Demo) *ui.App {
-	app := ui.NewApp()
-	applyUISettings(app, uiSettings{
-		TimestampFormat:      demo.TimestampFormat,
+// demoSettings is the demo's look. With path empty it is the demo's own;
+// otherwise the [appearance] and [sidebar] settings of the TOML file at
+// path (SLK_DEMO_LOOK), so a recording can show an opt-in look. Only that
+// file is read: never the user's config.
+func demoSettings(path string) (uiSettings, error) {
+	s := uiSettings{
 		TypingIndicators:     true,
 		HideDeactivatedUsers: true,
 		MouseWheelLines:      3,
 		ColoredUsernames:     true,
 		ClickOpensThread:     true,
-	})
+	}
+	if path != "" {
+		cfg, err := config.Load(path)
+		if err != nil {
+			return uiSettings{}, fmt.Errorf("SLK_DEMO_LOOK: %w", err)
+		}
+		s = uiSettingsFromConfig(cfg)
+		s.Theme, s.ThemeOverrides = "", core.Theme{}
+	}
+	s.TimestampFormat = demo.TimestampFormat
+	return s, nil
+}
+
+// newDemoApp builds the demo's App with settings. It takes no token store
+// or cache handle, so demo mode cannot reach the user's real data.
+func newDemoApp(d *demo.Demo, settings uiSettings) *ui.App {
+	app := ui.NewApp()
+	applyUISettings(app, settings)
 	d.Install(app)
 	return app
 }

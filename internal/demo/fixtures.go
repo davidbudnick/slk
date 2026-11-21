@@ -52,6 +52,7 @@ const (
 	chDesign      = "C0DESIGN"
 	chRandom      = "C0RANDOM"
 	chIncidents   = "C0INCIDENTS"
+	chReleases    = "C0RELEASES"
 	dmPriya       = "D0PRIYA"
 	dmSam         = "D0SAM"
 	dmMaya        = "D0MAYA"
@@ -70,6 +71,45 @@ func reacts(emoji string, users ...string) reactSpec { return reactSpec{emoji: e
 func deployCard(color, title, body string) []blocks.LegacyAttachment {
 	return []blocks.LegacyAttachment{{Color: color, Title: title, Text: body, Footer: "deploybot"}}
 }
+
+// prUnfurl is the attachment a code host's app makes of a pull request
+// link: a linked title, a description longer than Slack shows at once, a
+// field and a footer naming the repository.
+func prUnfurl(ago time.Duration) []blocks.LegacyAttachment {
+	return []blocks.LegacyAttachment{{
+		Color:     "36a64f",
+		Title:     "#418 Cap the rate limiter per workspace",
+		TitleLink: "https://git.lumen-labs.example/lumen/api/pull/418",
+		Text: "## Context\n\nOne busy workspace could use the whole request budget and slow every other one down.\n\n" +
+			"• The limiter kept one bucket for the whole service.\n• A burst from one workspace starved the rest.\n\n" +
+			"This gives each workspace its own bucket.\n\n## Changes\n\n• Add `ratelimit.PerKey` with a token bucket per key.\n" +
+			"• Key the API middleware by workspace.\n• Expose the burst and rate in config.\n\n## Testing\n\n• Unit tests for refill and burst.\n" +
+			"• A load test with two workspaces: the quiet one keeps its latency.",
+		Fields: []blocks.LegacyField{{Title: "Comments", Value: "3", Short: true}},
+		Footer: "<https://git.lumen-labs.example/lumen/api|lumen/api>",
+		TS:     time.Now().Add(-ago).Unix(),
+	}}
+}
+
+// linkPreview is the preview Slack makes of a pasted article link.
+func linkPreview() []blocks.LegacyAttachment {
+	const u = "https://blog.lumen-labs.example/2026/rate-limits-that-scale/"
+	return []blocks.LegacyAttachment{{
+		Title:       "Rate limits that scale with your customers",
+		TitleLink:   u,
+		OriginalURL: u,
+		FromURL:     u,
+		Text:        "How we moved from one global token bucket to one per workspace, and what it did to p99 latency during the busiest hour of the week.",
+	}}
+}
+
+// digestText is a weekly report an app posts, whose links carry the
+// filter in the address: "~", "*" and "_" that are not formatting.
+const digestText = "*Weekly reliability digest* - `api`\n" +
+	"Open alerts: :fire: <https://status.lumen-labs.example/alerts#~(filters~(sev~'P1)~state~'open)|*0* P1> | " +
+	"<https://status.lumen-labs.example/alerts#~(filters~(sev~'P2)~state~'open)|*2* P2> | " +
+	":warning: <https://status.lumen-labs.example/alerts#~(filters~(sev~'P3*)~state~'open_or_acked)|*5* P3>\n" +
+	"Error budget left: *82%*"
 
 func lumenLabs() teamSpec {
 	return teamSpec{
@@ -142,6 +182,15 @@ func lumenLabs() teamSpec {
 				}},
 				{user: bDeploy, ago: 3*hr + 48*mn, legacy: deployCard("good", "Deploy #1481 succeeded", "*api* → production in 3m 12s")},
 				{user: bDeploy, ago: 20 * mn, legacy: deployCard("warning", "Deploy #1482 waiting for approval", "*web* → production, requested by <@U0MAYA>")},
+			}},
+			{id: chReleases, name: "releases", typ: "channel", section: "Engineering", sectionOrder: 1, unread: 1, msgs: []msgSpec{
+				{user: bDeploy, ago: 26 * hr, text: digestText},
+				{user: uSam, ago: 3 * hr, text: "Worth a read before we ship the limiter: <https://blog.lumen-labs.example/2026/rate-limits-that-scale/>",
+					legacy: linkPreview()},
+				{user: uSam, ago: 2 * hr, text: "Review please :eyes: <https://git.lumen-labs.example/lumen/api/pull/418|git.lumen-labs.example/lumen/api/pull/418>",
+					legacy: prUnfurl(2 * hr), reactions: []reactSpec{reacts("eyes", uPriya, uJonas)}},
+				{user: uPriya, ago: 100 * mn, text: "Approved :white_check_mark:"},
+				{user: uPriya, ago: 99 * mn, text: ":rocket: :tada:"},
 			}},
 			{id: chIncidents, name: "incidents", typ: "channel", section: "Engineering", sectionOrder: 1, msgs: []msgSpec{
 				{user: uTom, ago: 50 * hr, text: "INC-207 resolved. Queue backlog cleared, postmortem on Thursday.",
