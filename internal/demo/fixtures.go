@@ -206,6 +206,10 @@ func lumenLabs() teamSpec {
 				{user: uDiego, ago: 30 * hr, text: "Who else is running the 10k on Saturday? :runner:"},
 				{user: uMaya, ago: 2 * hr, text: "Office plant update: the fern survived the weekend :herb:", edited: true,
 					reactions: []reactSpec{reacts("herb", uSam), reacts("joy", uTom)}},
+				{user: uDiego, ago: 50 * mn, text: "Signed up for the 10k :tada:"},
+				{user: uDiego, ago: 49 * mn, text: "Route goes along the river this year"},
+				{user: uDiego, ago: 47 * mn, text: "Anyone want to carpool? I can fit three :car:"},
+				{user: uNoor, ago: 30 * mn, text: "I'm in, thanks!"},
 			}},
 			{id: dmPriya, name: "Priya Shah", typ: "dm", dmUserID: uPriya, msgs: []msgSpec{
 				{user: uPriya, ago: 22 * hr, text: "Thanks for pairing on the session bug today!"},
