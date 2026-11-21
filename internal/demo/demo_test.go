@@ -2,6 +2,7 @@ package demo
 
 import (
 	"image"
+	"slices"
 	"strings"
 	"testing"
 
@@ -57,5 +58,43 @@ func TestUseImageProtocolReachesTheImageContext(t *testing.T) {
 	ctx := d.imageContext()
 	if ctx.Protocol != imgpkg.ProtoSixel || ctx.CellPixels != image.Pt(11, 23) {
 		t.Errorf("image context = %v at %v, want sixel at 11x23", ctx.Protocol, ctx.CellPixels)
+	}
+}
+
+// namesIn is how the demo shows the user, a DM peer, a DM, the group DM,
+// a channel author, a thread reply's author and a new post's author.
+func namesIn(t *testing.T, d *Demo) []string {
+	t.Helper()
+	lumen := d.StartupMsgs()[0].(ui.WorkspaceReadyMsg)
+	chans := map[string]string{}
+	for _, c := range lumen.Channels {
+		chans[c.ID] = c.Name
+	}
+	w := d.world
+	msgs, _ := w.messages(dmSam)
+	reply := w.replies(chEngineering, threadIn(t, w, chEngineering))[0]
+	posted, _ := w.post(chGeneral, "", uMaya, "hi", false)
+	return []string{lumen.UserNames[uAlex], lumen.UserNames[uSam], chans[dmSam], chans[gdmLaunch],
+		msgs[0].UserName, lumen.UserNames[reply.UserID] + "/" + reply.UserName, posted.UserName}
+}
+
+func TestDisplayNamesUnlessFullNames(t *testing.T) {
+	got := namesIn(t, testDemo(t))
+	want := []string{"alex", "sam.okafor", "sam.okafor", "priya, sam.okafor, maya", "sam.okafor", "", "maya"}
+	if r := strings.Split(got[5], "/"); r[0] != r[1] || strings.Contains(r[0], " ") {
+		t.Errorf("by default the reply author = %q, want one display name", got[5])
+	}
+	if got[5] = ""; !slices.Equal(got, want) {
+		t.Errorf("by default = %q, want display names %q", got, want)
+	}
+	d := testDemo(t)
+	d.UseFullNames(true)
+	got = namesIn(t, d)
+	want = []string{"Alex Rivera", "Sam Okafor", "Sam Okafor", "Priya Shah, Sam Okafor, Maya Chen", "Sam Okafor", "", "Maya Chen"}
+	if r := strings.Split(got[5], "/"); r[0] != r[1] || !strings.Contains(r[0], " ") {
+		t.Errorf("with full names the reply author = %q, want one full name", got[5])
+	}
+	if got[5] = ""; !slices.Equal(got, want) {
+		t.Errorf("with UseFullNames = %q, want full names %q", got, want)
 	}
 }
