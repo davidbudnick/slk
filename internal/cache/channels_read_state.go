@@ -14,12 +14,36 @@ type ReadState = core.ReadState
 // LastReadTS == "" means "preserve the existing last_read_ts" (used by
 // events that update has_unread only, e.g. new-message arrivals).
 // MentionCount is always applied: both batch writers are fed from
-// client.counts, which is authoritative.
+// client.counts, which is authoritative. LatestTS is the conversation's
+// newest message; "" preserves the one held, and an older one never
+// replaces a newer.
 type ChannelReadStateUpdate struct {
 	ChannelID    string
 	LastReadTS   string
 	HasUnread    bool
 	MentionCount int
+	LatestTS     string
+}
+
+// advanceLatestSQL moves a channel's latest_ts forward, never back.
+const advanceLatestSQL = `UPDATE channels SET latest_ts = ? WHERE id = ? AND latest_ts < ?`
+
+// AdvanceChannelLatest records ts as the newest message in the channel
+// when it is newer than the one held, and reports whether it was. The
+// sidebar orders direct messages by it.
+func (db *DB) AdvanceChannelLatest(channelID, ts string) (bool, error) {
+	if ts == "" {
+		return false, nil
+	}
+	res, err := db.conn.Exec(advanceLatestSQL, ts, channelID, ts)
+	if err != nil {
+		return false, fmt.Errorf("advancing channel latest_ts: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("advancing channel latest_ts: %w", err)
+	}
+	return n > 0, nil
 }
 
 // UpdateChannelReadState atomically updates the per-channel read state.
@@ -103,6 +127,12 @@ func (db *DB) BatchUpdateChannelReadState(updates []ChannelReadStateUpdate) erro
 		return fmt.Errorf("prepare flag: %w", err)
 	}
 	defer stmtFlag.Close()
+	stmtLatest, err := tx.Prepare(advanceLatestSQL)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("prepare latest: %w", err)
+	}
+	defer stmtLatest.Close()
 
 	for _, u := range updates {
 		if u.LastReadTS == "" {
@@ -114,6 +144,12 @@ func (db *DB) BatchUpdateChannelReadState(updates []ChannelReadStateUpdate) erro
 			if _, err := stmtBoth.Exec(u.LastReadTS, boolToInt(u.HasUnread), u.MentionCount, u.ChannelID); err != nil {
 				tx.Rollback()
 				return fmt.Errorf("batch both for %s: %w", u.ChannelID, err)
+			}
+		}
+		if u.LatestTS != "" {
+			if _, err := stmtLatest.Exec(u.LatestTS, u.ChannelID, u.LatestTS); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("batch latest for %s: %w", u.ChannelID, err)
 			}
 		}
 	}
@@ -170,6 +206,11 @@ func (db *DB) ReplaceWorkspaceReadState(workspaceID string, updates []ChannelRea
 		return fmt.Errorf("prepare flag: %w", err)
 	}
 	defer stmtFlag.Close()
+	stmtLatest, err := tx.Prepare(advanceLatestSQL)
+	if err != nil {
+		return fmt.Errorf("prepare latest: %w", err)
+	}
+	defer stmtLatest.Close()
 
 	for _, u := range updates {
 		if u.LastReadTS == "" {
@@ -179,6 +220,11 @@ func (db *DB) ReplaceWorkspaceReadState(workspaceID string, updates []ChannelRea
 		} else {
 			if _, err := stmtBoth.Exec(u.LastReadTS, boolToInt(u.HasUnread), u.MentionCount, u.ChannelID); err != nil {
 				return fmt.Errorf("replace both for %s: %w", u.ChannelID, err)
+			}
+		}
+		if u.LatestTS != "" {
+			if _, err := stmtLatest.Exec(u.LatestTS, u.ChannelID, u.LatestTS); err != nil {
+				return fmt.Errorf("replace latest for %s: %w", u.ChannelID, err)
 			}
 		}
 	}
@@ -191,12 +237,12 @@ func (db *DB) ReplaceWorkspaceReadState(workspaceID string, updates []ChannelRea
 // GetChannelReadState returns the read state for a single channel.
 // A missing row yields a zero-valued ReadState and a nil error.
 func (db *DB) GetChannelReadState(channelID string) (ReadState, error) {
-	var lastReadTS string
+	var lastReadTS, latestTS string
 	var hasUnread, mentionCount int
 	err := db.conn.QueryRow(
-		`SELECT last_read_ts, has_unread, mention_count FROM channels WHERE id = ?`,
+		`SELECT last_read_ts, has_unread, mention_count, latest_ts FROM channels WHERE id = ?`,
 		channelID,
-	).Scan(&lastReadTS, &hasUnread, &mentionCount)
+	).Scan(&lastReadTS, &hasUnread, &mentionCount, &latestTS)
 	if err == sql.ErrNoRows {
 		return ReadState{}, nil
 	}
@@ -207,6 +253,7 @@ func (db *DB) GetChannelReadState(channelID string) (ReadState, error) {
 		LastReadTS:   lastReadTS,
 		HasUnread:    hasUnread == 1,
 		MentionCount: mentionCount,
+		LatestTS:     latestTS,
 	}, nil
 }
 
@@ -215,7 +262,7 @@ func (db *DB) GetChannelReadState(channelID string) (ReadState, error) {
 // sidebar View() at render time.
 func (db *DB) GetWorkspaceReadState(workspaceID string) (map[string]ReadState, error) {
 	rows, err := db.conn.Query(
-		`SELECT id, last_read_ts, has_unread, mention_count FROM channels WHERE workspace_id = ?`,
+		`SELECT id, last_read_ts, has_unread, mention_count, latest_ts FROM channels WHERE workspace_id = ?`,
 		workspaceID,
 	)
 	if err != nil {
@@ -224,15 +271,16 @@ func (db *DB) GetWorkspaceReadState(workspaceID string) (map[string]ReadState, e
 	defer rows.Close()
 	out := make(map[string]ReadState)
 	for rows.Next() {
-		var id, lastRead string
+		var id, lastRead, latest string
 		var hasUnread, mentionCount int
-		if err := rows.Scan(&id, &lastRead, &hasUnread, &mentionCount); err != nil {
+		if err := rows.Scan(&id, &lastRead, &hasUnread, &mentionCount, &latest); err != nil {
 			return nil, fmt.Errorf("scan workspace read state: %w", err)
 		}
 		out[id] = ReadState{
 			LastReadTS:   lastRead,
 			HasUnread:    hasUnread == 1,
 			MentionCount: mentionCount,
+			LatestTS:     latest,
 		}
 	}
 	return out, rows.Err()

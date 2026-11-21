@@ -548,3 +548,67 @@ func TestGetWorkspaceReadState_IncludesMentionCount(t *testing.T) {
 		t.Errorf("C1 MentionCount = %d, want 6", m["C1"].MentionCount)
 	}
 }
+
+// latest_ts is the conversation's newest message: client.counts sets it
+// through both batch writers, each arriving message advances it, and
+// neither moves it back.
+func TestChannelLatest_AdvancesAndNeverMovesBack(t *testing.T) {
+	db, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer db.Close()
+	newRSChannel(t, db, "D1", "T1")
+	newRSChannel(t, db, "D2", "T1")
+	latest := func(id string) string {
+		t.Helper()
+		one, err := db.GetChannelReadState(id)
+		if err != nil {
+			t.Fatalf("GetChannelReadState(%s): %v", id, err)
+		}
+		all, err := db.GetWorkspaceReadState("T1")
+		if err != nil {
+			t.Fatalf("GetWorkspaceReadState: %v", err)
+		}
+		if all[id].LatestTS != one.LatestTS {
+			t.Fatalf("%s: the two readers disagree: %q vs %q", id, one.LatestTS, all[id].LatestTS)
+		}
+		return one.LatestTS
+	}
+
+	if err := db.ReplaceWorkspaceReadState("T1", []ChannelReadStateUpdate{
+		{ChannelID: "D1", LatestTS: "1700000100.000000"},
+		{ChannelID: "D2", LatestTS: "1700000200.000000"},
+	}); err != nil {
+		t.Fatalf("ReplaceWorkspaceReadState: %v", err)
+	}
+	if latest("D1") != "1700000100.000000" || latest("D2") != "1700000200.000000" {
+		t.Fatalf("boot snapshot not stored: D1=%q D2=%q", latest("D1"), latest("D2"))
+	}
+
+	if err := db.BatchUpdateChannelReadState([]ChannelReadStateUpdate{
+		{ChannelID: "D1", LatestTS: "1700000050.000000"},
+		{ChannelID: "D2", LatestTS: ""},
+	}); err != nil {
+		t.Fatalf("BatchUpdateChannelReadState: %v", err)
+	}
+	if latest("D1") != "1700000100.000000" || latest("D2") != "1700000200.000000" {
+		t.Errorf("an older or empty latest replaced a newer one: D1=%q D2=%q", latest("D1"), latest("D2"))
+	}
+
+	moved, err := db.AdvanceChannelLatest("D1", "1700000300.000000")
+	if err != nil || !moved || latest("D1") != "1700000300.000000" {
+		t.Errorf("AdvanceChannelLatest(newer) = %v, %v, latest %q; want it to move", moved, err, latest("D1"))
+	}
+	for _, ts := range []string{"1700000300.000000", "1700000001.000000", ""} {
+		if moved, err := db.AdvanceChannelLatest("D1", ts); err != nil || moved {
+			t.Errorf("AdvanceChannelLatest(%q) = %v, %v; want no move", ts, moved, err)
+		}
+	}
+	if latest("D1") != "1700000300.000000" {
+		t.Errorf("latest moved back to %q", latest("D1"))
+	}
+	if moved, err := db.AdvanceChannelLatest("DGONE", "1700000300.000000"); err != nil || moved {
+		t.Errorf("AdvanceChannelLatest on an unknown channel = %v, %v", moved, err)
+	}
+}

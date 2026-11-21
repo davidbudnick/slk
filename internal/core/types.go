@@ -197,6 +197,10 @@ type ReadState struct {
 	// reading is unverified against a live capture; see UnreadInfo's doc
 	// in internal/slack/client.go. Rendering gates it on HasUnread.
 	MentionCount int
+	// LatestTS is the conversation's newest message, from client.counts
+	// and then each message as it arrives; "" when slk has seen neither.
+	// The sidebar orders direct messages by it.
+	LatestTS string
 }
 
 // AvatarBadge is the presence mark drawn on the corner of a sidebar

@@ -256,6 +256,53 @@ func TestOnMessage_SelfMessage_DoesNotSetHasUnread(t *testing.T) {
 	}
 }
 
+// Every message that lands in a conversation is its newest, your own
+// included: the sidebar lists direct messages most recent first, and a
+// conversation you just wrote in is the most recent. A thread reply, a
+// change echo and a join notice are not a new message in it.
+func TestOnMessage_AdvancesTheConversationsLatest(t *testing.T) {
+	db := newTestDB(t)
+	_ = db.UpsertChannel(cache.Channel{ID: "D1", WorkspaceID: "T1", Name: "ann", Type: "dm"})
+	h := &rtmEventHandler{
+		db:              db,
+		wsCtx:           &WorkspaceContext{},
+		isActive:        func() bool { return true },
+		activeChannelID: func() string { return "D1" },
+		currentUserID:   "USELF",
+	}
+	latest := func() string {
+		t.Helper()
+		s, err := db.GetChannelReadState("D1")
+		if err != nil {
+			t.Fatalf("GetChannelReadState: %v", err)
+		}
+		return s.LatestTS
+	}
+
+	h.OnMessage("D1", "U1", "1700000100.000000", "hi", "", "", false, false, nil, slack.Blocks{}, nil, "", "")
+	if got := latest(); got != "1700000100.000000" {
+		t.Fatalf("latest after their message = %q", got)
+	}
+	h.OnMessage("D1", "USELF", "1700000200.000000", "hello", "", "", false, false, nil, slack.Blocks{}, nil, "", "")
+	if got := latest(); got != "1700000200.000000" {
+		t.Errorf("latest after your own message = %q, want it advanced", got)
+	}
+	h.OnMessage("D1", "U1", "1700000300.000000", "reply", "1700000100.000000", "", false, false, nil, slack.Blocks{}, nil, "", "")
+	h.OnMessage("D1", "U1", "1700000400.000000", "edited", "", "", true, true, nil, slack.Blocks{}, nil, "", "")
+	h.OnMessage("D1", "U1", "1700000500.000000", "joined", "", "channel_join", false, false, nil, slack.Blocks{}, nil, "", "")
+	if got := latest(); got != "1700000200.000000" {
+		t.Errorf("latest = %q after a thread reply, a change echo and a join notice, want it unchanged", got)
+	}
+}
+
+func TestSidebarOrdersByLatest(t *testing.T) {
+	for chType, want := range map[string]bool{"dm": true, "group_dm": true, "app": true, "channel": false, "private": false, "": false} {
+		if got := sidebarOrdersByLatest(chType); got != want {
+			t.Errorf("sidebarOrdersByLatest(%q) = %v, want %v", chType, got, want)
+		}
+	}
+}
+
 // The author comparison must not treat "no human sender" as "it was me".
 // A bot message carries userID == "", and currentUserID is also "" until
 // workspace bootstrap wires it -- an unguarded equality would exempt

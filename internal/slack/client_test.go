@@ -3460,6 +3460,41 @@ func TestGetUnreadCounts_ParsesMentionCounts(t *testing.T) {
 	}
 }
 
+// client.counts carries each conversation's newest message as "latest",
+// in all three blocks; the sidebar orders direct messages by it.
+func TestGetUnreadCounts_ParsesLatest(t *testing.T) {
+	const body = `{
+	  "ok": true,
+	  "channels": [{"id":"C1","has_unreads":false,"last_read":"1.0","latest":"1700000001.000100"}],
+	  "mpims": [{"id":"G1","has_unreads":false,"last_read":"4.0","latest":"1700000002.000200"}],
+	  "ims": [
+	    {"id":"D1","has_unreads":true,"mention_count":1,"last_read":"5.0","latest":"1700000003.000300"},
+	    {"id":"D2","has_unreads":false,"last_read":"6.0"}
+	  ],
+	  "threads": {"has_unreads":false}
+	}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	unreads, _, _, err := newTestClient(srv).GetUnreadCounts()
+	if err != nil {
+		t.Fatalf("GetUnreadCounts: %v", err)
+	}
+	got := map[string]string{}
+	for _, u := range unreads {
+		got[u.ChannelID] = u.Latest
+	}
+	want := map[string]string{"C1": "1700000001.000100", "G1": "1700000002.000200", "D1": "1700000003.000300", "D2": ""}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("%s Latest = %q, want %q", id, got[id], w)
+		}
+	}
+}
+
 func TestMarkChannel_NotOK_ReturnsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

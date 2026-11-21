@@ -98,9 +98,10 @@ right_align_badges = false  # true: mention badges at the right end of the row (
 channel_indent = 0          # cells to indent the rows under each section header (0-6)
 slack_style = false         # true: Slack's look: headers start at their emoji with no ▾
                             # (a collapsed one ends in ▸), plain headers, no unread dot
-                            # (bold only), names sorted ignoring punctuation, and the
+                            # (bold only), names sorted ignoring punctuation, the
                             # row of what is open (a conversation, Threads, Activity)
-                            # filled instead of marked with ▌
+                            # filled instead of marked with ▌, and direct messages
+                            # and apps listed unread first, then newest message first
 private_glyph = "◆"         # glyph before private channels, e.g. a lock your font has
                             # (sidebar only: the finder and pane header keep ◆)
 avatars = false             # true: each DM's and app's avatar in place of its glyph,
