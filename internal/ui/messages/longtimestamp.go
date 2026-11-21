@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
-	"github.com/gammons/slk/internal/ui/styles"
 )
 
 // timeFromTS returns the local time of a Slack timestamp
@@ -60,8 +59,8 @@ func ReplaceHeaderTimestamp(rendered, header, short, replacement string, maxWidt
 	if replacement == short {
 		return rendered
 	}
-	styledShort := styles.Timestamp.Render(short)
-	styledLong := styles.Timestamp.Render(replacement)
+	styledShort := TimestampStyle().Render(short)
+	styledLong := TimestampStyle().Render(replacement)
 	longHeader := strings.Replace(header, styledShort, styledLong, 1)
 	if longHeader == header || lipgloss.Width(longHeader) > maxWidth {
 		return rendered

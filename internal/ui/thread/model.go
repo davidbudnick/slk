@@ -1410,15 +1410,8 @@ func (m *Model) viewInternal(height, width int, applySelection bool) string {
 		Render("")
 	var newLandmark string
 	if m.unreadBoundaryTS != "" {
-		newLandmark = lipgloss.NewStyle().
-			Width(width).
-			Background(styles.Background).
-			Foreground(styles.Error).
-			Bold(true).
-			Align(lipgloss.Center).
-			Render("── new ──")
+		newLandmark = messages.NewSeparator(width)
 	}
-	dateSeparatorStyle := messages.DividerStyle(width)
 	decoration := func(row string) entrylist.Entry { return entrylist.Entry{Ref: -1, Lines: []string{row}} }
 	entries := make([]entrylist.Entry, 0, 2*len(m.replyEntries)+2)
 	entries = append(entries, parent)
@@ -1430,7 +1423,7 @@ func (m *Model) viewInternal(height, width int, applySelection bool) string {
 	landmarkInserted := false
 	for i, e := range m.replyEntries {
 		if replyDate := messages.DateFromTS(m.replies[i].TS); replyDate != "" && replyDate != lastDate {
-			entries = append(entries, decoration(dateSeparatorStyle.Render("── "+messages.FormatDateSeparator(replyDate)+" ──")))
+			entries = append(entries, decoration(messages.DaySeparator(messages.FormatDateSeparator(replyDate), width)))
 			sixel = append(sixel, nil)
 			lastDate = replyDate
 		}

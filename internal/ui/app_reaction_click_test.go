@@ -118,6 +118,57 @@ func TestApp_ClickOnReactionPillAddsReaction(t *testing.T) {
 	}
 }
 
+// TestApp_ClickOnAddReactionPillOpensThePicker: in Slack's look the "+"
+// pill after a message's reactions opens the emoji picker for that
+// message, whichever message is selected, and toggles nothing.
+func TestApp_ClickOnAddReactionPillOpensThePicker(t *testing.T) {
+	a := NewApp()
+	t.Cleanup(func() { messages.SetLook(messages.Look{}) })
+	a.SetMessageSlackStyle(true)
+	a.width = 120
+	a.height = 30
+	a.activeChannelID = "C-react"
+	a.messagepane.SetMessages([]messages.MessageItem{
+		{
+			TS: "1700000001.000000", UserID: "U1", UserName: "alice", Text: "hello", Timestamp: "10:30 AM",
+			Reactions: []messages.ReactionItem{{Emoji: "thumbsup", Count: 1}},
+		},
+		{TS: "1700000900.000000", UserID: "U2", UserName: "bob", Text: "selected, no reactions", Timestamp: "10:45 AM"},
+	})
+	_ = a.View()
+
+	toggles := 0
+	toggle := func(ids.ChannelID, ids.MessageTS, string) error { toggles++; return nil }
+	a.SetReactionService(core.NewReactionService(toggle, toggle, nil, nil))
+
+	chrome := a.messagepane.ChromeHeight()
+	x, y := -1, -1
+	for paneY := chrome; paneY < a.height-2 && x < 0; paneY++ {
+		for paneX := 0; paneX < a.layout.msgEnd-a.layout.sidebarEnd-2; paneX++ {
+			if _, e, ok := a.messagepane.HitTestReaction(paneY-chrome, paneX); ok && e == messages.AddReactionKey {
+				x, y = a.layout.sidebarEnd+1+paneX, paneY+1
+				break
+			}
+		}
+	}
+	if x < 0 {
+		t.Fatal("no add-reaction pill in the messages pane")
+	}
+
+	_, cmd := a.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	_ = drainBatch(cmd)
+
+	if a.mode != ModeReactionPicker || !a.reactionPicker.IsVisible() {
+		t.Fatalf("mode = %v, picker visible %v; want the reaction picker open", a.mode, a.reactionPicker.IsVisible())
+	}
+	if got := a.reactionPicker.MessageTS(); got != "1700000001.000000" {
+		t.Errorf("picker opened for %q, want the message whose pill was clicked", got)
+	}
+	if toggles != 0 {
+		t.Errorf("the click toggled %d reactions, want none", toggles)
+	}
+}
+
 // TestApp_ClickOnAlreadyReactedPillRemovesReaction asserts that
 // clicking a pill the current user has already reacted with invokes
 // the remove callback rather than the add callback.

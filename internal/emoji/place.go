@@ -129,8 +129,18 @@ func EmojiCacheKey(url string) string {
 // completion, dispatches EmojiImageReadyMsg{URL: url} via
 // ctx.SendMsg.
 func Place(ctx PlaceContext, url string, cells int) (string, func(io.Writer) error, bool) {
-	if url == "" || ctx.Fetcher == nil || cells < 1 {
+	lines, flush, ok := PlaceRows(ctx, url, cells, 1)
+	if !ok {
 		return "", nil, false
+	}
+	return lines[0], flush, true
+}
+
+// PlaceRows is Place for an emoji rows tall: one string per row, each
+// cells wide.
+func PlaceRows(ctx PlaceContext, url string, cells, rows int) ([]string, func(io.Writer) error, bool) {
+	if url == "" || ctx.Fetcher == nil || cells < 1 || rows < 1 {
+		return nil, nil, false
 	}
 
 	// Negative-cache short-circuit. If this URL's fetch has failed earlier
@@ -138,18 +148,18 @@ func Place(ctx PlaceContext, url string, cells int) (string, func(io.Writer) err
 	// asset), bail out so the caller falls back to the legacy glyph/text
 	// rendering instead of showing a blank cold-cache reservation forever.
 	if isEmojiURLFailed(url) {
-		return "", nil, false
+		return nil, nil, false
 	}
 
-	target := goimage.Pt(cells, 1)
+	target := goimage.Pt(cells, rows)
 	key := EmojiCacheKey(url)
 
 	// Warm path: a prerendered kitty placement string is ready in the
 	// fetcher's prerender memo. The fetcher's worker populated this
 	// off the UI thread when the fetch completed.
 	if r, ok := ctx.Fetcher.Prerendered(key, target, imgpkg.ProtoKitty); ok {
-		if len(r.Lines) > 0 {
-			return r.Lines[0], r.OnFlush, true
+		if len(r.Lines) >= rows {
+			return r.Lines[:rows], r.OnFlush, true
 		}
 	}
 
@@ -159,7 +169,11 @@ func Place(ctx PlaceContext, url string, cells int) (string, func(io.Writer) err
 	// the warm and cold output, so the eventual swap doesn't shift
 	// layout.
 	spawnEmojiFetch(ctx, key, url, target)
-	return strings.Repeat(" ", cells), nil, true
+	blank := make([]string, rows)
+	for i := range blank {
+		blank[i] = strings.Repeat(" ", cells)
+	}
+	return blank, nil, true
 }
 
 // PlaceShortcode places the emoji a Slack shortcode names (no colons,
@@ -188,12 +202,13 @@ func PlaceShortcode(ctx PlaceContext, name string, customs map[string]string, ce
 // Place calls hit the warm path without further work on the UI
 // thread.
 func spawnEmojiFetch(ctx PlaceContext, key, url string, target goimage.Point) {
+	flight := key + "|" + target.String()
 	inflightEmojiMu.Lock()
-	if _, busy := inflightEmoji[key]; busy {
+	if _, busy := inflightEmoji[flight]; busy {
 		inflightEmojiMu.Unlock()
 		return
 	}
-	inflightEmoji[key] = struct{}{}
+	inflightEmoji[flight] = struct{}{}
 	inflightEmojiMu.Unlock()
 
 	send := ctx.SendMsg
@@ -202,7 +217,7 @@ func spawnEmojiFetch(ctx PlaceContext, key, url string, target goimage.Point) {
 	go func() {
 		defer func() {
 			inflightEmojiMu.Lock()
-			delete(inflightEmoji, key)
+			delete(inflightEmoji, flight)
 			inflightEmojiMu.Unlock()
 		}()
 

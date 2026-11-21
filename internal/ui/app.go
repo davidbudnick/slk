@@ -443,12 +443,15 @@ type App struct {
 	replyAvatars  bool
 	// messageSlackStyle is [appearance] slack_style, for new windows.
 	messageSlackStyle bool
-	imageCtx          imgrender.ImageContext
-	emojiCtx          messages.EmojiContext
-	emojiCustoms      map[string]string
-	channelNames      map[string]string // UI-owned mention names, independent of sidebar membership
-	userGroups        map[string]string
-	selfGroups        map[string]bool // usergroups the current user is in
+	// messageLook is how message content is drawn: slack_style, the
+	// link glyph and the active workspace's own Slack settings.
+	messageLook  messages.Look
+	imageCtx     imgrender.ImageContext
+	emojiCtx     messages.EmojiContext
+	emojiCustoms map[string]string
+	channelNames map[string]string // UI-owned mention names, independent of sidebar membership
+	userGroups   map[string]string
+	selfGroups   map[string]bool // usergroups the current user is in
 
 	// buildInfo is the build identity :version shows: version and short
 	// commit (version.Short). Set once at startup by main.
@@ -1071,6 +1074,7 @@ func NewApp() *App {
 	// Seed the statusbar hint with the configured help key label so it
 	// stays accurate if the binding is ever changed.
 	app.statusbar.SetHelpHint(app.defaultHelpHint())
+	messages.SetLook(app.messageLook)
 	return app
 }
 
@@ -1458,6 +1462,11 @@ func (a *App) openReactionPicker(p contentPane, channelID string) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	return a.openReactionPickerFor(p, channelID, msg)
+}
+
+// openReactionPickerFor opens the emoji picker for msg in pane.
+func (a *App) openReactionPickerFor(p contentPane, channelID string, msg messages.MessageItem) tea.Cmd {
 	var existing []string
 	for _, r := range msg.Reactions {
 		if r.HasReacted {
@@ -3263,6 +3272,57 @@ func (a *App) SetMessageSlackStyle(enabled bool) {
 	for _, m := range a.allWinModels() {
 		m.SetSlackStyle(enabled)
 	}
+	a.applyMessageLook()
+}
+
+// SetLinkGlyph sets the glyph drawn before a bare link in Slack's look
+// ([appearance] link_glyph).
+func (a *App) SetLinkGlyph(glyph string) {
+	a.messageLook.LinkGlyph = glyph
+	a.applyMessageLook()
+}
+
+// setSlackDisplay takes the active workspace's own Slack settings.
+func (a *App) setSlackDisplay(underlineLinks, plainEmoji bool) {
+	a.messageLook.UnderlineLinks, a.messageLook.PlainEmoji = underlineLinks, plainEmoji
+	a.applyMessageLook()
+}
+
+// applyMessageLook installs the look message content is drawn with and
+// redraws what was drawn with the old one.
+func (a *App) applyMessageLook() {
+	a.messageLook.Slack = a.messageSlackStyle
+	if messages.CurrentLook() == a.messageLook {
+		return
+	}
+	messages.SetLook(a.messageLook)
+	a.redrawMessages()
+}
+
+// redrawMessages drops what every pane has drawn of its messages.
+func (a *App) redrawMessages() {
+	a.invalidateAllWinModelCaches()
+	a.threadPanel.InvalidateCache()
+}
+
+// toggleFold shows a message's folded attachment text in full, or folds
+// it again, in every pane that draws the message.
+func (a *App) toggleFold(ts string) {
+	messages.ToggleFold(ts)
+	a.redrawMessages()
+}
+
+// toggleFoldOfSelected is e: "Show more" or "Show less" on the selected message.
+func (a *App) toggleFoldOfSelected() tea.Cmd {
+	msg, _, ok := a.selectedMessageInFocus()
+	if !ok {
+		return nil
+	}
+	if !messages.HasFold(msg) {
+		return toastWithClear(a, "Nothing more to show on this message", 3*time.Second)
+	}
+	a.toggleFold(msg.TS)
+	return nil
 }
 
 // replyAvatarFunc is the reply-row avatar source, nil when reply_avatars

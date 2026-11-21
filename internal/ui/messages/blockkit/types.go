@@ -60,6 +60,7 @@ type RenderResult struct {
 	SixelRows   map[int]SixelEntry      // sixel sentinel rows keyed by row index into Lines (same coord system as HitRect.RowStart)
 	Height      int                     // == len(Lines); cached for caller's row math
 	Hits        []HitRect               // clickable image footprints
+	Folds       []HitRect               // "Show more" and "Show less" rows of folded attachment text
 	Interactive bool                    // any interactive element rendered
 }
 
@@ -138,6 +139,12 @@ type Context struct {
 	MaxRows     int // for full-size image blocks
 	MaxCols     int
 	UserNames   map[string]string // for resolving <@U…> mentions in mrkdwn
+	// Slack draws a link's preview as a card, dates a footer as Slack
+	// does, folds long attachment text behind "Show more" and starts a
+	// section's lines at its edge.
+	Slack bool
+	// Unfolded shows the message's folded attachment text in full.
+	Unfolded bool
 	// SendMsg is a tea.Cmd-style callback typed as func(any) so this
 	// package does not need to import bubbletea. Used by image-block
 	// prefetchers to signal completion. May be nil; when nil, image

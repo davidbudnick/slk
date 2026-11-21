@@ -421,6 +421,13 @@ func (a *App) toggleReactionAt(p contentPane, channelID string, items []messages
 	if contentY := py - p.ChromeHeight(); contentY >= 0 {
 		if idx, emojiName, hit := p.HitTestReaction(contentY, px); hit && emojiName != "" {
 			if idx >= 0 && idx < len(items) {
+				if emojiName == messages.AddReactionKey {
+					return a.openReactionPickerFor(p, channelID, items[idx]), true
+				}
+				if emojiName == messages.ShowMoreKey {
+					a.toggleFold(items[idx].TS)
+					return nil, true
+				}
 				return a.toggleReactionOnMessageItem(channelID, items[idx], emojiName), true
 			}
 		}

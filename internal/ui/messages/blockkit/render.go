@@ -108,6 +108,22 @@ func appendBlock(out *RenderResult, b Block, ctx Context, width int) {
 	}
 }
 
+// flushLines drops the spaces a line of a section's text starts with, as
+// Slack does when it draws one; a code block keeps its indentation.
+func flushLines(text string) string {
+	lines := strings.Split(text, "\n")
+	fenced := false
+	for i, l := range lines {
+		if !fenced {
+			lines[i] = strings.TrimLeft(l, " \t")
+		}
+		if strings.Count(l, "```")%2 == 1 {
+			fenced = !fenced
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func appendSection(out *RenderResult, s SectionBlock, ctx Context, width int) {
 	bodyW := width
 	var accessoryLines []string
@@ -160,7 +176,11 @@ func appendSection(out *RenderResult, s SectionBlock, ctx Context, width int) {
 	// Body text.
 	var bodyLines []string
 	if s.Text != "" {
-		bodyLines = renderTextLines(s.Text, ctx, bodyW)
+		text := s.Text
+		if ctx.Slack {
+			text = flushLines(text)
+		}
+		bodyLines = renderTextLines(text, ctx, bodyW)
 	}
 
 	startRow := len(out.Lines)

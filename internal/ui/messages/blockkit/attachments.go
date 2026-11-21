@@ -10,6 +10,7 @@
 package blockkit
 
 import (
+	"regexp"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -58,6 +59,10 @@ func RenderLegacy(atts []LegacyAttachment, ctx Context, width int) RenderResult 
 // and footer are rendered to the right of the colored stripe at
 // width - stripeCol.
 func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, width int) {
+	if ctx.Slack && width >= previewMinWidth && isLinkPreview(a) {
+		appendLinkPreview(out, a, ctx, width)
+		return
+	}
 	perf := ctx.Perf // local alias; nil disables timing
 	// Pretext renders ABOVE the stripe, full width, no indent.
 	if a.Pretext != "" {
@@ -87,16 +92,22 @@ func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, 
 
 	// Body lines — title, text, footer. Fields and image_url come in Task 13.
 	var body []string
+	if by := byline(a.ServiceName, a.AuthorName); ctx.Slack && by != "" {
+		body = append(body, lipgloss.NewStyle().Bold(true).Render(truncateToWidth(by, contentW)))
+	}
 	if a.Title != "" {
 		var t0 time.Time
 		if perf != nil {
 			t0 = time.Now()
 		}
 		title := a.Title
+		titleStyle := lipgloss.NewStyle().Bold(true)
 		if a.TitleLink != "" {
 			title = "\x1b]8;;" + a.TitleLink + "\x1b\\" + title + "\x1b]8;;\x1b\\"
+			if ctx.Slack {
+				titleStyle = titleStyle.Foreground(styles.Primary)
+			}
 		}
-		titleStyle := lipgloss.NewStyle().Bold(true)
 		if lipgloss.Width(title) > contentW {
 			title = truncateToWidth(title, contentW)
 		}
@@ -105,12 +116,23 @@ func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, 
 			perf.otherTotal += time.Since(t0)
 		}
 	}
+	foldRowInBody := -1
 	if a.Text != "" {
 		var t0 time.Time
 		if perf != nil {
 			t0 = time.Now()
 		}
-		body = append(body, renderTextLines(a.Text, ctx, contentW)...)
+		text := a.Text
+		short, folded := foldText(text)
+		folded = folded && ctx.Slack
+		if folded && !ctx.Unfolded {
+			text = short
+		}
+		body = append(body, renderTextLines(text, ctx, contentW)...)
+		if folded {
+			foldRowInBody = len(body)
+			body = append(body, foldRow(ctx.Unfolded))
+		}
 		if perf != nil {
 			perf.textTotal += time.Since(t0)
 		}
@@ -209,11 +231,14 @@ func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, 
 		if perf != nil {
 			t0 = time.Now()
 		}
-		footer := a.Footer
+		footer := footerLinks(a.Footer)
 		if a.TS != 0 {
-			ts := time.Unix(a.TS, 0).UTC().Format("2006-01-02 3:04 PM")
+			ts, sep := time.Unix(a.TS, 0).UTC().Format("2006-01-02 3:04 PM"), " · "
+			if ctx.Slack {
+				ts, sep = footerTime(a.TS, now()), " | "
+			}
 			if footer != "" {
-				footer += " · " + ts
+				footer += sep + ts
 			} else {
 				footer = ts
 			}
@@ -240,6 +265,13 @@ func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, 
 	}
 	if perf != nil {
 		perf.otherTotal += time.Since(stripeT0)
+	}
+	if foldRowInBody >= 0 {
+		row := startRow + foldRowInBody
+		out.Folds = append(out.Folds, HitRect{
+			RowStart: row, RowEnd: row + 1,
+			ColStart: stripeCol, ColEnd: stripeCol + lipgloss.Width(body[foldRowInBody]),
+		})
 	}
 
 	// Adjust the image hit so its rows are absolute within out.Lines
@@ -288,6 +320,21 @@ func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, 
 			out.Hits = append(out.Hits, h)
 		}
 	}
+}
+
+// footerLinkRe matches a Slack link, with or without a label.
+var footerLinkRe = regexp.MustCompile(`<([a-z][a-z0-9+.-]*:[^|>\s]+)(?:\|([^>]+))?>`)
+
+// footerLinks draws a footer's links as their labels, still clickable.
+func footerLinks(footer string) string {
+	return footerLinkRe.ReplaceAllStringFunc(footer, func(match string) string {
+		parts := footerLinkRe.FindStringSubmatch(match)
+		label := parts[2]
+		if label == "" {
+			label = parts[1]
+		}
+		return "\x1b]8;;" + parts[1] + "\x1b\\" + label + "\x1b]8;;\x1b\\"
+	})
 }
 
 // renderLegacyFields lays out attachment fields. Two consecutive

@@ -352,6 +352,7 @@ func pinRenderGlobals(tb testing.TB) {
 	styles.Apply("dark", config.Theme{})
 	emoji.SetImageMode(false, 2)
 	messages.SetNowFunc(goldenClock)
+	messages.SetLook(messages.Look{})
 	tb.Cleanup(resetRenderGlobals)
 }
 
@@ -760,6 +761,40 @@ func resetRenderGlobals() {
 	styles.Apply("dark", config.Theme{})
 	emoji.SetImageMode(false, 2)
 	messages.SetNowFunc(nil)
+	messages.SetLook(messages.Look{})
+}
+
+// goldenSlackLookMessages is a conversation with what Slack's look
+// changes: a bare link over its preview, pills, and grouped messages.
+func goldenSlackLookMessages() []messages.MessageItem {
+	link := "https://store.example.com/app/2379780/Cardgame/"
+	return []messages.MessageItem{
+		{
+			TS: goldenTS(-24 * time.Hour), UserID: "U1", UserName: "alice",
+			Text: "morning all", Timestamp: "9:00 AM", DateStr: "2026-03-14",
+		},
+		{
+			TS: goldenTS(0), UserID: "U2", UserName: "bob",
+			Text: "<" + link + ">", Timestamp: "9:00 AM", DateStr: "2026-03-15",
+			LegacyAttachments: []blockkit.LegacyAttachment{{
+				Title: "Cardgame on Store", TitleLink: link, OriginalURL: link, ServiceName: "store.example.com",
+				Text: "The poker roguelike. A deckbuilder where you play illegal poker hands, discover game-changing jokers, and trigger outrageous combos round after round until the last blind falls.",
+			}},
+		},
+		{
+			TS: goldenTS(time.Minute), UserID: "U2", UserName: "bob",
+			Text: "<https://app.example.com/p/issues#~(filters~(status~(equals~(~'OPEN))))|*2* open> on <https://git.example.com/acme/menus/pull/24|the pull request>", Timestamp: "9:01 AM", DateStr: "2026-03-15",
+			LegacyAttachments: []blockkit.LegacyAttachment{{
+				Color: "36a64f", Title: "#24 Group modifiers by station", TitleLink: "https://git.example.com/acme/menus/pull/24",
+				Text:   "## Context\nModifiers were listed flat.\n• Group them by station.\n• Keep the order the kitchen set.\nNothing else changes.\n## Testing\nTable tests for the grouping.",
+				Footer: "acme/menus",
+			}},
+			Reactions: []messages.ReactionItem{
+				{Emoji: "tada", Count: 3, UserIDs: []string{"U1", "U3", "U4"}},
+				{Emoji: "eyes", Count: 1, HasReacted: true, UserIDs: []string{"U1"}},
+			},
+		},
+	}
 }
 
 func TestNewGoldenApp_IsDeterministic(t *testing.T) {
@@ -1532,6 +1567,24 @@ func goldenScenarios() []goldenScenario {
 			build: func(t *testing.T) *App {
 				a := newGoldenApp(t, goldenFixtureOpts()...)
 				goldenDraftPreview(a, &a.compose, PanelMessages)
+				_ = a.View()
+				return a
+			},
+		},
+		{
+			// Slack's look ([appearance] slack_style): the day rule, a
+			// bare link behind its glyph, the preview card, upright
+			// times and the add-reaction pill.
+			name: "slack_look", w: goldenBaseW, h: goldenBaseH,
+			build: func(t *testing.T) *App {
+				a := newGoldenApp(t,
+					withSize(goldenBaseW, goldenBaseH),
+					withChannels(goldenChannels()...),
+					withActiveChannel("C1"),
+					withMessages(goldenSlackLookMessages()...),
+				)
+				a.SetLinkGlyph("🔗")
+				a.SetMessageSlackStyle(true)
 				_ = a.View()
 				return a
 			},
