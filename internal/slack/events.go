@@ -125,8 +125,16 @@ type EventHandler interface {
 	// conversation becomes visible to the user mid-session: mpim_open,
 	// im_created, group_joined, or channel_joined. The full slack.Channel
 	// payload is forwarded so the receiver can construct a sidebar item
-	// without an extra conversations.info round-trip.
+	// without an extra conversations.info round-trip. The exception is
+	// a group DM opened again, which arrives with its ID and IsMpIM
+	// alone (see openedConversation).
 	OnConversationOpened(channel slack.Channel)
+
+	// OnConversationClosed is delivered when the user closes a DM or
+	// group DM on any of their clients: im_close, mpim_close or
+	// group_close. The conversation leaves the sidebar until it is
+	// opened again.
+	OnConversationClosed(channelID string)
 
 	// OnChannelSectionUpserted is called for channel_section_upserted
 	// WS events: section create, rename, reorder, or emoji change.
@@ -435,8 +443,46 @@ type wsChannelMarkedEvent struct {
 // group_joined, and channel_joined events. All four carry a top-level
 // `channel` field with the full conversation object.
 type wsConversationOpenedEvent struct {
-	Type    string        `json:"type"`
-	Channel slack.Channel `json:"channel"`
+	Type    string          `json:"type"`
+	Channel json.RawMessage `json:"channel"`
+	User    string          `json:"user"`
+}
+
+// openedConversation reads the conversation an open event names. Some
+// carry the conversation object. im_open and mpim_open, sent when a
+// closed DM or group DM is opened again, were observed carrying only
+// its ID: with im_open's `user`, the peer, that is the whole DM, while
+// a group DM comes back with ID and kind alone and its receiver has to
+// look the rest up.
+func openedConversation(evt wsConversationOpenedEvent) (slack.Channel, bool) {
+	var ch slack.Channel
+	if err := json.Unmarshal(evt.Channel, &ch); err == nil {
+		return ch, ch.ID != ""
+	}
+	var id string
+	if err := json.Unmarshal(evt.Channel, &id); err != nil || id == "" {
+		return slack.Channel{}, false
+	}
+	switch evt.Type {
+	case "im_open":
+		if evt.User == "" {
+			return slack.Channel{}, false
+		}
+		ch.IsIM, ch.User = true, evt.User
+	case "mpim_open":
+		ch.IsMpIM = true
+	default:
+		return slack.Channel{}, false
+	}
+	ch.ID, ch.IsMember = id, true
+	return ch, true
+}
+
+// wsConversationClosedEvent is the shape of im_close, mpim_close and
+// group_close, whose `channel` is the conversation's ID alone.
+type wsConversationClosedEvent struct {
+	Type    string `json:"type"`
+	Channel string `json:"channel"`
 }
 
 // wsPrefChangeEvent represents a pref_change WS event. Slack ships
@@ -770,8 +816,20 @@ func dispatchWebSocketEvent(data []byte, handler EventHandler) {
 		if err := json.Unmarshal(data, &evt); err != nil {
 			return
 		}
-		if evt.Channel.ID != "" {
-			handler.OnConversationOpened(evt.Channel)
+		if ch, ok := openedConversation(evt); ok {
+			debuglog.WS("%s: channel=%s", evt.Type, ch.ID)
+			handler.OnConversationOpened(ch)
+		}
+
+	case "im_close", "mpim_close", "group_close":
+		var evt wsConversationClosedEvent
+		if err := json.Unmarshal(data, &evt); err != nil {
+			debuglog.WS("%s: unreadable: %v (fields: %s)", evt.Type, err, topLevelFields(data))
+			return
+		}
+		debuglog.WS("%s: channel=%s", evt.Type, evt.Channel)
+		if evt.Channel != "" {
+			handler.OnConversationClosed(evt.Channel)
 		}
 
 	case "thread_marked":

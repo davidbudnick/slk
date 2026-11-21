@@ -441,6 +441,21 @@ type (
 		Item       sidebar.ChannelItem
 		FinderItem core.ChannelFinderItem
 	}
+	// ConversationClosedMsg is sent when a DM or group DM was closed:
+	// by ChannelService.Close succeeding here, or by Slack's im_close,
+	// mpim_close or group_close event for a close on any client. Both
+	// arrive for a close made here, in either order. TeamID is checked
+	// as ConversationOpenedMsg's is.
+	ConversationClosedMsg struct {
+		TeamID    string
+		ChannelID string
+	}
+	// ConversationCloseFailedMsg is sent when ChannelService.Close fails.
+	ConversationCloseFailedMsg struct {
+		ChannelID string
+		Name      string
+		Err       error
+	}
 	// SectionsRefreshedMsg is sent when a workspace's Slack-native
 	// section state has mutated (via channel_section_* WS events) and
 	// the channel list needs to be re-bucketed in the sidebar. Channels

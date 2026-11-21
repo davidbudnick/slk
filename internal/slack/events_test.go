@@ -44,6 +44,7 @@ type mockEventHandler struct {
 
 	lastConversationOpenedID string
 	lastConversationOpenedCh slack.Channel
+	conversationsClosed      []string
 
 	sectionUpserted               *ChannelSectionUpserted
 	sectionDeletedID              string
@@ -174,6 +175,10 @@ func (m *mockEventHandler) OnThreadSubscriptionChanged(channelID, threadTS, last
 func (m *mockEventHandler) OnConversationOpened(ch slack.Channel) {
 	m.lastConversationOpenedID = ch.ID
 	m.lastConversationOpenedCh = ch
+}
+
+func (m *mockEventHandler) OnConversationClosed(channelID string) {
+	m.conversationsClosed = append(m.conversationsClosed, channelID)
 }
 
 func (m *mockEventHandler) OnChannelSectionUpserted(ev ChannelSectionUpserted) {
@@ -826,6 +831,58 @@ func TestDispatch_MPIMOpen(t *testing.T) {
 	dispatchWebSocketEvent(payload, h)
 	if h.lastConversationOpenedID != "G1" {
 		t.Errorf("OnConversationOpened not called or wrong ID; got %q", h.lastConversationOpenedID)
+	}
+}
+
+// A closed DM or group DM that is opened again arrives named by its ID
+// alone, as observed on a live socket: im_open with the peer beside
+// it, mpim_open with nothing more. Both must reach the handler, or the
+// row never comes back.
+func TestDispatch_ReopenedConversationsNamedByID(t *testing.T) {
+	h := &mockEventHandler{}
+	dispatchWebSocketEvent([]byte(`{"type":"im_open","channel":"D1","user":"U1","event_ts":"1.0"}`), h)
+	if ch := h.lastConversationOpenedCh; ch.ID != "D1" || !ch.IsIM || ch.User != "U1" || ch.IsMpIM {
+		t.Errorf("im_open by ID = %+v; want the DM D1 with peer U1", ch.Conversation)
+	}
+
+	h = &mockEventHandler{}
+	dispatchWebSocketEvent([]byte(`{"type":"mpim_open","channel":"G1","is_mpim":true,"user":"U0","event_ts":"1.0"}`), h)
+	if ch := h.lastConversationOpenedCh; ch.ID != "G1" || !ch.IsMpIM || ch.IsIM || ch.Name != "" {
+		t.Errorf("mpim_open by ID = %+v; want the group DM G1, unnamed", ch.Conversation)
+	}
+
+	for _, payload := range []string{
+		`{"type":"im_open","channel":"D1"}`,
+		`{"type":"group_joined","channel":"G9"}`,
+		`{"type":"mpim_open","channel":""}`,
+		`{"type":"im_open","channel":7,"user":"U1"}`,
+	} {
+		h = &mockEventHandler{}
+		dispatchWebSocketEvent([]byte(payload), h)
+		if h.lastConversationOpenedID != "" {
+			t.Errorf("%s reached OnConversationOpened as %q; there is no conversation to build from it", payload, h.lastConversationOpenedID)
+		}
+	}
+}
+
+// im_close, mpim_close and group_close carry the conversation's ID as
+// a plain string, unlike the open events' channel object.
+func TestDispatch_ConversationClosed(t *testing.T) {
+	h := &mockEventHandler{}
+	for _, payload := range []string{
+		`{"type":"im_close","user":"U1","channel":"D1"}`,
+		`{"type":"mpim_close","user":"U1","channel":"G1"}`,
+		`{"type":"group_close","user":"U1","channel":"G2"}`,
+		`{"type":"im_close","user":"U1"}`,
+		`{"type":"im_close","channel":`,
+	} {
+		dispatchWebSocketEvent([]byte(payload), h)
+	}
+	if want := []string{"D1", "G1", "G2"}; !slices.Equal(h.conversationsClosed, want) {
+		t.Errorf("OnConversationClosed calls = %v; want %v", h.conversationsClosed, want)
+	}
+	if h.lastConversationOpenedID != "" {
+		t.Errorf("a close event reached OnConversationOpened (%q)", h.lastConversationOpenedID)
 	}
 }
 

@@ -72,6 +72,10 @@ func (d *Demo) services() services {
 				msgs, _ := w.messages(string(channelID))
 				return ui.MessagesAroundLoadedMsg{ChannelID: string(channelID), TargetTS: string(ts), Messages: msgs}
 			},
+			Close: func(channelID ids.ChannelID, _ string) core.Msg {
+				ch := string(channelID)
+				return ui.ConversationClosedMsg{TeamID: w.teamOf(ch), ChannelID: ch}
+			},
 			MarkRead: func(channelID ids.ChannelID, ts ids.MessageTS) core.Msg {
 				ch := string(channelID)
 				w.markRead(ch, string(ts))
