@@ -4,7 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/gammons/slk/internal/avatar"
 	"github.com/gammons/slk/internal/config"
+	"github.com/gammons/slk/internal/core"
 	"github.com/gammons/slk/internal/service"
 	slk "github.com/gammons/slk/internal/slack"
 	"github.com/slack-go/slack"
@@ -87,6 +89,37 @@ func TestBuildChannelItem_GroupDMOmitsSelf(t *testing.T) {
 	}
 	if finderItem.Name != "Alice, Bob" {
 		t.Errorf("finder Name = %q, want %q", finderItem.Name, "Alice, Bob")
+	}
+	if item.GroupSize != 2 {
+		t.Errorf("GroupSize = %d, want the 2 people the name lists", item.GroupSize)
+	}
+}
+
+// A group DM with a custom name has no mpdm name to count from; its
+// size comes from the member list userBoot sends, less the user.
+func TestBuildChannelItem_GroupDMSizeFromMembers(t *testing.T) {
+	wctx := &WorkspaceContext{
+		UserID:            "UGRANT",
+		UserHandle:        "grant",
+		UserNames:         newUserNameStore(nil),
+		UserNamesByHandle: map[string]string{},
+	}
+	ch := slack.Channel{
+		GroupConversation: slack.GroupConversation{
+			Conversation: slack.Conversation{
+				ID:     "G1",
+				IsMpIM: true,
+			},
+			Name:    "Launch crew",
+			Members: []string{"UALICE", "UGRANT", "UBOB", "UCAT"},
+		},
+	}
+	item, _ := buildChannelItem(ch, wctx, config.Config{}, "T1")
+	if item.Name != "Launch crew" {
+		t.Errorf("Name = %q, want the custom name", item.Name)
+	}
+	if item.GroupSize != 3 {
+		t.Errorf("GroupSize = %d, want the 3 other members", item.GroupSize)
 	}
 }
 
@@ -313,5 +346,21 @@ func TestBuildChannelItem_StoreNotReady_UsesGlob(t *testing.T) {
 	item, _ := buildChannelItem(ch, wctx, cfg, "T1")
 	if item.Section != "Globbed" {
 		t.Errorf("Section = %q, want Globbed (store not ready, even though it has a mapping)", item.Section)
+	}
+}
+
+// The sidebar names an icon with a core constant and the avatar cache
+// draws it by that name; main passes the name through unchanged.
+func TestSidebarIconNamesHaveDrawings(t *testing.T) {
+	for name, drawn := range map[string]string{
+		core.IconChannels:       avatar.IconChannels,
+		core.IconDirectMessages: avatar.IconDirectMessages,
+		core.IconApps:           avatar.IconApps,
+		core.IconHash:           avatar.IconHash,
+		core.IconLock:           avatar.IconLock,
+	} {
+		if name != drawn {
+			t.Errorf("core names %q what avatar draws as %q", name, drawn)
+		}
 	}
 }

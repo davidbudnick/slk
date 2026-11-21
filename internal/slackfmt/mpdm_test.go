@@ -154,3 +154,22 @@ func TestFormatMPDMName_DropsSelf(t *testing.T) {
 		})
 	}
 }
+
+func TestMPDMOthers(t *testing.T) {
+	cases := []struct {
+		name, self string
+		want       int
+	}{
+		{"mpdm-grant--myles--ray-1", "grant", 2},
+		{"mpdm-grant--myles--ray-1", "", 3},
+		{"mpdm-a--b--c--d--e--f-1", "c", 5},
+		{"mpdm-grant-1", "grant", 1},
+		{"general", "grant", 0},
+		{"mpdm-", "grant", 0},
+	}
+	for _, c := range cases {
+		if got := MPDMOthers(c.name, c.self); got != c.want {
+			t.Errorf("MPDMOthers(%q, %q) = %d, want %d", c.name, c.self, got, c.want)
+		}
+	}
+}

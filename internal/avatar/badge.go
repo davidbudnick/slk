@@ -38,8 +38,7 @@ func (c *Cache) GetSidebar(userID string, dot color.Color, hollow bool) string {
 	}
 	key := "avatar-" + userID + "-sidebar"
 	if dot != nil {
-		r, g, b, _ := dot.RGBA()
-		key += fmt.Sprintf("-%02x%02x%02x-%t", r>>8, g>>8, b>>8, hollow)
+		key += fmt.Sprintf("-%s-%t", hexRGB(dot), hollow)
 	}
 	c.mu.RLock()
 	icon, src := c.sidebar[key], c.sources[userID]
@@ -47,16 +46,22 @@ func (c *Cache) GetSidebar(userID string, dot color.Color, hollow bool) string {
 	if icon != "" || src == nil {
 		return icon
 	}
-	c.kitty.SetSource(key, sidebarIcon(src, dot, hollow))
-	out := c.kitty.RenderKey(key, image.Pt(SmallCols, SmallRows))
+	return c.placeSidebar(key, sidebarIcon(src, dot, hollow), SmallCols)
+}
+
+// placeSidebar uploads img under key and returns its placement, cols
+// cells wide on one sidebar row, remembering it under key.
+func (c *Cache) placeSidebar(key string, img image.Image, cols int) string {
+	c.kitty.SetSource(key, img)
+	out := c.kitty.RenderKey(key, image.Pt(cols, SmallRows))
 	if out.OnFlush != nil {
 		_ = out.OnFlush(imgpkg.KittyOutput)
 	}
-	icon = joinLines(out.Lines)
+	placed := joinLines(out.Lines)
 	c.mu.Lock()
-	c.sidebar[key] = icon
+	c.sidebar[key] = placed
 	c.mu.Unlock()
-	return icon
+	return placed
 }
 
 // sidebarIcon draws src as the sidebar shows it: inset on a transparent
@@ -98,7 +103,5 @@ func sidebarIcon(src image.Image, dot color.Color, hollow bool) image.Image {
 // outsideRoundedCorner reports whether (x, y) falls outside the rounded
 // corners of the square spanning lo..hi on both axes.
 func outsideRoundedCorner(x, y, lo, hi float64) bool {
-	cx := math.Max(lo+iconCorner, math.Min(x, hi-iconCorner))
-	cy := math.Max(lo+iconCorner, math.Min(y, hi-iconCorner))
-	return math.Hypot(x-cx, y-cy) > iconCorner
+	return !inRoundRect(x, y, lo, lo, hi, hi, iconCorner)
 }

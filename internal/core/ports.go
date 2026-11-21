@@ -478,6 +478,8 @@ type SidebarAvatarService interface {
 	// SidebarAvatar is userID's small avatar with badge drawn on its
 	// corner, or "" while it isn't available.
 	SidebarAvatar(userID string, badge AvatarBadge) string
+	// SidebarCount is c drawn as an image, or "" when it can't be.
+	SidebarCount(c CountImage) string
 }
 
 // ImageFetcher downloads and caches remote images for inline rendering

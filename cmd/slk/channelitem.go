@@ -109,6 +109,9 @@ func buildChannelItem(ch slack.Channel, wctx *WorkspaceContext, cfg config.Confi
 	if ch.IsIM {
 		item.DMUserID = ch.User
 	}
+	if ch.IsMpIM {
+		item.GroupSize = groupSize(ch, wctx)
+	}
 
 	finderItem := core.ChannelFinderItem{
 		ID:       ch.ID,
@@ -119,6 +122,22 @@ func buildChannelItem(ch slack.Channel, wctx *WorkspaceContext, cfg config.Confi
 		DMUserID: item.DMUserID,
 	}
 	return item, finderItem
+}
+
+// groupSize is the number of other people in a group DM, the figure
+// Slack draws on its icon: from the member list when Slack sent one,
+// else from the mpdm name, which a custom name replaces.
+func groupSize(ch slack.Channel, wctx *WorkspaceContext) int {
+	others := 0
+	for _, id := range ch.Members {
+		if id != wctx.UserID {
+			others++
+		}
+	}
+	if others > 0 {
+		return others
+	}
+	return slackfmt.MPDMOthers(ch.Name, wctx.UserHandle)
 }
 
 // upsertChannelInDB writes the channel to the SQLite cache. Separated from

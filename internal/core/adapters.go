@@ -776,21 +776,30 @@ func (a sixelAvatarAdapter) SixelAvatar(userID string) (string, []byte, bool) {
 
 // NewSidebarAvatarService adds sidebar avatars to s: sidebar returns
 // userID's small avatar with badge drawn on its corner, or "" while it
-// isn't available. A nil sidebar returns s unchanged.
-func NewSidebarAvatarService(s AvatarService, sidebar func(userID string, badge AvatarBadge) string) AvatarService {
+// isn't available, and count returns a count drawn as an image. A nil
+// sidebar returns s unchanged.
+func NewSidebarAvatarService(s AvatarService, sidebar func(userID string, badge AvatarBadge) string, count func(c CountImage) string) AvatarService {
 	if sidebar == nil {
 		return s
 	}
-	return sidebarAvatarAdapter{s, sidebar}
+	return sidebarAvatarAdapter{s, sidebar, count}
 }
 
 type sidebarAvatarAdapter struct {
 	AvatarService
 	sidebar func(userID string, badge AvatarBadge) string
+	count   func(c CountImage) string
 }
 
 func (a sidebarAvatarAdapter) SidebarAvatar(userID string, badge AvatarBadge) string {
 	return a.sidebar(userID, badge)
+}
+
+func (a sidebarAvatarAdapter) SidebarCount(c CountImage) string {
+	if a.count == nil {
+		return ""
+	}
+	return a.count(c)
 }
 
 func (a avatarAdapter) Avatar(userID string) string {

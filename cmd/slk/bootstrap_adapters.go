@@ -458,7 +458,7 @@ func applyBootUsers(wctx *WorkspaceContext, res *bootstrap.Result) {
 // session over data it already held.
 //
 // The mapping only has to satisfy buildChannelItem, which reads ID,
-// Name, Topic, IsIM, IsMpIM, IsPrivate, IsMember and User. Everything
+// Name, Topic, IsIM, IsMpIM, IsPrivate, IsMember, Members and User. Everything
 // else on slack.Channel is left zero deliberately: a field invented
 // here would read as measured downstream.
 //
@@ -505,6 +505,7 @@ func bootConversations(res *bootstrap.Result) []slack.Channel {
 				Creator: ch.Creator,
 				Topic:   slack.Topic{Value: ch.Topic.Value},
 				Purpose: slack.Purpose{Value: ch.Purpose.Value},
+				Members: ch.Members,
 			},
 			IsChannel: ch.IsChannel,
 			IsGeneral: ch.IsGeneral,
