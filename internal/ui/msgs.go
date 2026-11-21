@@ -456,6 +456,21 @@ type (
 		Name      string
 		Err       error
 	}
+	// ChannelLeftMsg is sent when the user left a channel: by
+	// ChannelService.Leave succeeding here, or by Slack's channel_left
+	// or group_left event for a leave on any client. Both arrive for a
+	// leave made here, in either order. TeamID is checked as
+	// ConversationOpenedMsg's is.
+	ChannelLeftMsg struct {
+		TeamID    string
+		ChannelID string
+	}
+	// ChannelLeaveFailedMsg is sent when ChannelService.Leave fails.
+	ChannelLeaveFailedMsg struct {
+		ChannelID string
+		Name      string
+		Err       error
+	}
 	// SectionsRefreshedMsg is sent when a workspace's Slack-native
 	// section state has mutated (via channel_section_* WS events) and
 	// the channel list needs to be re-bucketed in the sidebar. Channels

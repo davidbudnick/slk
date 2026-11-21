@@ -136,6 +136,11 @@ type EventHandler interface {
 	// opened again.
 	OnConversationClosed(channelID string)
 
+	// OnChannelLeft is delivered when the user leaves a channel on any
+	// of their clients: channel_left or group_left. The channel leaves
+	// the sidebar.
+	OnChannelLeft(channelID string)
+
 	// OnChannelSectionUpserted is called for channel_section_upserted
 	// WS events: section create, rename, reorder, or emoji change.
 	OnChannelSectionUpserted(ev ChannelSectionUpserted)
@@ -478,8 +483,9 @@ func openedConversation(evt wsConversationOpenedEvent) (slack.Channel, bool) {
 	return ch, true
 }
 
-// wsConversationClosedEvent is the shape of im_close, mpim_close and
-// group_close, whose `channel` is the conversation's ID alone.
+// wsConversationClosedEvent is the shape of im_close, mpim_close,
+// group_close, channel_left and group_left, whose `channel` is the
+// conversation's ID alone.
 type wsConversationClosedEvent struct {
 	Type    string `json:"type"`
 	Channel string `json:"channel"`
@@ -830,6 +836,17 @@ func dispatchWebSocketEvent(data []byte, handler EventHandler) {
 		debuglog.WS("%s: channel=%s", evt.Type, evt.Channel)
 		if evt.Channel != "" {
 			handler.OnConversationClosed(evt.Channel)
+		}
+
+	case "channel_left", "group_left":
+		var evt wsConversationClosedEvent
+		if err := json.Unmarshal(data, &evt); err != nil {
+			debuglog.WS("%s: unreadable: %v (fields: %s)", evt.Type, err, topLevelFields(data))
+			return
+		}
+		debuglog.WS("%s: channel=%s", evt.Type, evt.Channel)
+		if evt.Channel != "" {
+			handler.OnChannelLeft(evt.Channel)
 		}
 
 	case "thread_marked":

@@ -1,11 +1,8 @@
 package ui
 
 import (
-	"time"
-
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/gammons/slk/internal/debuglog"
 	"github.com/gammons/slk/internal/ids"
 	"github.com/gammons/slk/internal/ui/sidebar"
 )
@@ -49,13 +46,6 @@ func (a *App) removeClosedConversation(channelID string) {
 	if len(kept) != len(items) {
 		a.SetChannels(kept)
 	}
-}
-
-// conversationCloseFailed says that Slack refused a close; the row
-// stays.
-func (a *App) conversationCloseFailed(m ConversationCloseFailedMsg) tea.Cmd {
-	debuglog.General("closing conversation %s: %v", m.ChannelID, m.Err)
-	return toastWithClear(a, "Could not close "+m.Name, 3*time.Second)
 }
 
 // sidebarRowAt returns the sidebar's panel row at screen cell (x, y),

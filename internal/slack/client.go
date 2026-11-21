@@ -69,6 +69,7 @@ type SlackAPI interface {
 	CompleteUploadExternalContext(ctx context.Context, params slack.CompleteUploadExternalParameters) (*slack.CompleteUploadExternalResponse, error)
 	OpenConversationContext(ctx context.Context, params *slack.OpenConversationParameters) (*slack.Channel, bool, bool, error)
 	CloseConversationContext(ctx context.Context, channelID string) (bool, bool, error)
+	LeaveConversationContext(ctx context.Context, channelID string) (bool, error)
 	GetConversationInfoContext(ctx context.Context, input *slack.GetConversationInfoInput) (*slack.Channel, error)
 }
 
@@ -1188,6 +1189,15 @@ func (c *Client) OpenConversation(ctx context.Context, userIDs []string) (string
 func (c *Client) CloseConversation(ctx context.Context, channelID string) error {
 	if _, _, err := c.api.CloseConversationContext(ctx, channelID); err != nil {
 		return fmt.Errorf("closing conversation: %w", err)
+	}
+	return nil
+}
+
+// LeaveChannel leaves a channel via conversations.leave, as /leave does
+// in Slack. Leaving one the user is not in is not an error.
+func (c *Client) LeaveChannel(ctx context.Context, channelID string) error {
+	if _, err := c.api.LeaveConversationContext(ctx, channelID); err != nil {
+		return fmt.Errorf("leaving channel %s: %w", channelID, err)
 	}
 	return nil
 }
