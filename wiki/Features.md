@@ -74,7 +74,11 @@ See [[Terminal Compatibility|Terminal-Compatibility]] for which protocol your te
 - Closes on channel switch
 - **Threads view** (`⚑ Threads` at top of sidebar): scrollable list of every
   thread you authored, replied to, or were @-mentioned in for the active
-  workspace. Unread first, then newest activity. Selecting a thread opens
+  workspace. Unread first, then newest activity. Each thread is drawn as
+  Slack draws it: the channel and the people in the thread, then a card
+  with the parent message, a `Show N more replies` link and the two
+  newest replies (a thread whose replies slk has not fetched yet shows
+  its reply count and when the last one came). Selecting a thread opens
   it in the side panel; the list re-ranks live as new replies arrive.
   v1 is computed from the local SQLite cache, so threads from channels
   you have not yet opened in slk will not appear until they are seen.

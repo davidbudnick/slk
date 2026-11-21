@@ -770,7 +770,7 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 	// Place avatar next to message content (avatar is side-by-side, no
 	// extra rows; row indices for sixelRows remain valid).
 	if avatarStr != "" {
-		msgContent = placeAvatarBeside(avatarStr, msgContent)
+		msgContent = PlaceAvatarBeside(avatarStr, msgContent)
 	}
 
 	if len(allSixel) == 0 {

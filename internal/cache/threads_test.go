@@ -1,7 +1,10 @@
 package cache
 
 import (
+	"slices"
 	"testing"
+
+	"github.com/gammons/slk/internal/core"
 )
 
 func TestThreadInvolvesUser_AuthoredParent(t *testing.T) {
@@ -329,6 +332,88 @@ func TestListSubscribedThreads_ParentMissingShowsEmpty(t *testing.T) {
 	// messages are cached for the thread.
 	if got[0].LastReplyTS != "1700000150.000000" {
 		t.Fatalf("expected LastReplyTS to fall back to subscription LastRead, got %q", got[0].LastReplyTS)
+	}
+}
+
+// The Threads view draws the newest replies under each parent, as Slack
+// does, so the summary carries the last two, oldest first.
+func TestListSubscribedThreads_CarriesNewestRepliesOldestFirst(t *testing.T) {
+	db := setupDBWithWorkspace(t)
+	if err := db.UpsertChannel(Channel{ID: "C1", WorkspaceID: "T1", Name: "general", Type: "channel"}); err != nil {
+		t.Fatalf("UpsertChannel: %v", err)
+	}
+	mustUpsertMsg(t, db, "1700000100.000000", "C1", "U2", "parent", "1700000100.000000")
+	mustUpsertMsg(t, db, "1700000200.000000", "C1", "U3", "first", "1700000100.000000")
+	mustUpsertMsg(t, db, "1700000300.000000", "C1", "U4", "second", "1700000100.000000")
+	mustUpsertMsg(t, db, "1700000400.000000", "C1", "U3", "third", "1700000100.000000")
+	if err := db.UpsertMessage(Message{
+		TS: "1700000500.000000", ChannelID: "C1", WorkspaceID: "T1", UserID: "U5",
+		Text: "deleted", ThreadTS: "1700000100.000000", IsDeleted: true,
+	}); err != nil {
+		t.Fatalf("UpsertMessage: %v", err)
+	}
+	if err := db.UpsertThreadSubscription("T1", "C1", "1700000100.000000", "1700000400.000000", true); err != nil {
+		t.Fatalf("UpsertThreadSubscription: %v", err)
+	}
+
+	got, err := db.ListSubscribedThreads("T1", "U1")
+	if err != nil || len(got) != 1 {
+		t.Fatalf("ListSubscribedThreads = %+v, %v; want one thread", got, err)
+	}
+	want := []core.ThreadReply{
+		{UserID: "U4", Text: "second", TS: "1700000300.000000"},
+		{UserID: "U3", Text: "third", TS: "1700000400.000000"},
+	}
+	if replies := got[0].PreviewReplies(); !slices.Equal(replies, want) {
+		t.Errorf("PreviewReplies = %+v, want %+v", replies, want)
+	}
+	if ids := got[0].ParticipantIDs(); !slices.Equal(ids, []string{"U2", "U4", "U3"}) {
+		t.Errorf("ParticipantIDs = %v, want the parent's author then the previewed repliers", ids)
+	}
+	if got[0].ReplyCount != 3 {
+		t.Errorf("ReplyCount = %d, want the 3 cached replies", got[0].ReplyCount)
+	}
+}
+
+// A thread whose replies were never fetched still knows its size and
+// repliers from the parent Slack sent: reply_count and reply_users.
+func TestListSubscribedThreads_UncachedRepliesUseTheParentsCounts(t *testing.T) {
+	db := setupDBWithWorkspace(t)
+	if err := db.UpsertChannel(Channel{ID: "C1", WorkspaceID: "T1", Name: "general", Type: "channel"}); err != nil {
+		t.Fatalf("UpsertChannel: %v", err)
+	}
+	if err := db.UpsertMessage(Message{
+		TS: "1700000100.000000", ChannelID: "C1", WorkspaceID: "T1", UserID: "U2", Text: "parent",
+		ThreadTS: "1700000100.000000", ReplyCount: 7,
+		RawJSON: `{"reply_count":7,"reply_users":["U3","U2","U4"]}`,
+	}); err != nil {
+		t.Fatalf("UpsertMessage: %v", err)
+	}
+	if err := db.UpsertMessage(Message{
+		TS: "1700000900.000000", ChannelID: "C1", WorkspaceID: "T1", UserID: "U9", Text: "broken parent",
+		ThreadTS: "1700000900.000000", RawJSON: `{not json`,
+	}); err != nil {
+		t.Fatalf("UpsertMessage: %v", err)
+	}
+	for _, ts := range []string{"1700000100.000000", "1700000900.000000"} {
+		if err := db.UpsertThreadSubscription("T1", "C1", ts, ts, true); err != nil {
+			t.Fatalf("UpsertThreadSubscription: %v", err)
+		}
+	}
+
+	got, err := db.ListSubscribedThreads("T1", "U1")
+	if err != nil || len(got) != 2 {
+		t.Fatalf("ListSubscribedThreads = %+v, %v; want two threads", got, err)
+	}
+	broken, whole := got[0], got[1]
+	if whole.ReplyCount != 7 || len(whole.PreviewReplies()) != 0 {
+		t.Errorf("ReplyCount = %d with %d previews, want 7 and none", whole.ReplyCount, len(whole.PreviewReplies()))
+	}
+	if ids := whole.ParticipantIDs(); !slices.Equal(ids, []string{"U2", "U3", "U4"}) {
+		t.Errorf("ParticipantIDs = %v, want the parent's author then reply_users, each once", ids)
+	}
+	if ids := broken.ParticipantIDs(); !slices.Equal(ids, []string{"U9"}) || broken.ReplyCount != 0 {
+		t.Errorf("a parent with unreadable JSON must still list: participants %v, replies %d", ids, broken.ReplyCount)
 	}
 }
 

@@ -2034,9 +2034,9 @@ func (m *Model) partialRebuild(width int) {
 	}
 }
 
-// placeAvatarBeside renders the avatar to the left of the message content.
+// PlaceAvatarBeside renders the avatar to the left of the message content.
 // The avatar is 4 cols wide, 2 rows tall. Message content flows to the right.
-func placeAvatarBeside(avatar, content string) string {
+func PlaceAvatarBeside(avatar, content string) string {
 	avatarLines := strings.Split(avatar, "\n")
 	contentLines := strings.Split(content, "\n")
 

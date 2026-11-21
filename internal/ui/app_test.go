@@ -967,13 +967,13 @@ func TestApp_ClickOnThreadInThreadsViewOpensIt(t *testing.T) {
 	// Re-render so layout reflects ViewThreads.
 	_ = a.View()
 
-	// Click in the messages-pane horizontal zone, on row Y=5. The
-	// messages pane has a 1-row top border, so paneY = 4. With
-	// cardStride=4 and cardContentLines=3, absLine=4 lies on the
-	// first row of card 1 (rows 0-2 = card 0, row 3 = separator,
-	// rows 4-6 = card 1).
+	// Click in the messages-pane horizontal zone, on row Y=9. The
+	// messages pane has a 1-row top border, so paneY = 8: rows 0-1 are
+	// the "Threads" title and the blank under it, rows 2-6 card 0 (its
+	// channel row, then the bordered parent: top, author, body, bottom),
+	// row 7 the spacer, and row 8 the channel row of card 1.
 	clickX := a.layout.sidebarEnd + 5 // anywhere inside the msg pane zone
-	clickY := 5
+	clickY := 9
 	fetchedCh, fetchedTS = "", ""
 	_, cmd := a.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 	if cmd == nil {
@@ -990,6 +990,31 @@ func TestApp_ClickOnThreadInThreadsViewOpensIt(t *testing.T) {
 	if a.threadPanel.ChannelID() != "C_B" || a.threadPanel.ThreadTS() != "2.0" {
 		t.Errorf("thread panel opened (ch=%q, ts=%q); want (C_B, 2.0)",
 			a.threadPanel.ChannelID(), a.threadPanel.ThreadTS())
+	}
+}
+
+// The selected thread card is drawn in the focused selection colour only
+// while the threads list has the keyboard, so the list must learn where
+// the focus is on every render.
+func TestApp_ThreadsViewFollowsPanelFocus(t *testing.T) {
+	a := NewApp()
+	a.width = 160
+	a.height = 30
+	a.activeTeamID = "T1"
+	a.Update(ThreadsListLoadedMsg{TeamID: "T1", SubscriptionsAvailable: true, Summaries: []cache.ThreadSummary{
+		{ChannelID: "C_A", ThreadTS: "1.0", ParentTS: "1.0", ParentText: "alpha"},
+	}})
+	a.Update(ThreadsViewActivatedMsg{})
+
+	a.focusedPanel = PanelMessages
+	_ = a.View()
+	if !a.threadsView.Focused() {
+		t.Error("threads list with the keyboard must render focused")
+	}
+	a.focusedPanel = PanelSidebar
+	_ = a.View()
+	if a.threadsView.Focused() {
+		t.Error("threads list must render unfocused once the sidebar has the keyboard")
 	}
 }
 

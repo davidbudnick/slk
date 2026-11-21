@@ -29,7 +29,7 @@ import (
 // Each activity row is a two-line card (line 1: author + context + time;
 // line 2: the hydrated message-body preview) followed by one blank
 // separator line, except the last card. card i therefore starts at flat
-// line i*cardStride. Same layout and math as threadsview.
+// line i*cardStride.
 const (
 	cardContentLines = 2
 	cardStride       = cardContentLines + 1
