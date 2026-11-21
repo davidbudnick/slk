@@ -112,6 +112,8 @@ var gridPerWorkspaceFrames = map[string]bool{
 	"group_joined": true, "channel_joined": true,
 	// And OnConversationClosed, which takes a row back out.
 	"im_close": true, "mpim_close": true, "group_close": true,
+	// And OnChannelLeft, which takes a channel's row out.
+	"channel_left": true, "group_left": true,
 	// Thread subscriptions: UpsertThreadSubscription keys on
 	// workspace_id, so each session must persist its own row - and an
 	// unsubscribe must tombstone it on every session.

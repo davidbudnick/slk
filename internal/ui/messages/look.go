@@ -84,21 +84,22 @@ func bareLinkLabel(url string) string {
 	return l.LinkGlyph + " " + visible
 }
 
-// isBareLabel reports whether label only repeats url, whole or cut short
-// with an ellipsis as Slack's composer cuts a long one, so the link is
-// drawn as a bare one.
-func isBareLabel(url, label string) bool {
+// bareAddress is the address to draw as a bare link when label only
+// repeats url: the label as written, or url when the label was cut short
+// with an ellipsis as Slack's composer cuts a long one.
+func bareAddress(url, label string) (string, bool) {
 	if !CurrentLook().Slack {
-		return false
+		return "", false
 	}
 	trim := func(s string) string {
-		return strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(s, "https://"), "http://"), "/")
+		s = strings.TrimPrefix(strings.TrimPrefix(s, "https://"), "http://")
+		return strings.TrimSuffix(strings.TrimPrefix(s, "www."), "/")
 	}
 	address, shown := trim(url), trim(label)
 	for _, ellipsis := range []string{"…", "..."} {
 		if start, cut := strings.CutSuffix(shown, ellipsis); cut {
-			return start != "" && strings.HasPrefix(address, start)
+			return url, start != "" && strings.HasPrefix(address, start)
 		}
 	}
-	return shown == address
+	return label, shown == address
 }

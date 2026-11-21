@@ -551,6 +551,9 @@ type App struct {
 	// which never resets.
 	previewRemovals   map[string]previewRemoval
 	previewRemovalSeq uint64
+	// leaving is the conversation /leave asked Slack to take the user
+	// out of, until Slack answers (see leave_conversation.go).
+	leaving string
 	// userProfile is the K-opened read-only "who is this person?"
 	// modal (see internal/ui/userprofile). profileSvc fetches the
 	// full profile; defaulted to noopProfileService in NewApp so the
@@ -3337,9 +3340,34 @@ func (a *App) applyMessageLook() {
 		return
 	}
 	messages.SetLook(a.messageLook)
+	a.redrawMessages()
+}
+
+// redrawMessages drops what every pane has drawn of its messages.
+func (a *App) redrawMessages() {
 	a.invalidateAllWinModelCaches()
 	a.threadPanel.InvalidateCache()
 	a.threadsView.InvalidateCache()
+}
+
+// toggleFold shows a message's folded attachment text in full, or folds
+// it again, in every pane that draws the message.
+func (a *App) toggleFold(ts string) {
+	messages.ToggleFold(ts)
+	a.redrawMessages()
+}
+
+// toggleFoldOfSelected is e: "Show more" or "Show less" on the selected message.
+func (a *App) toggleFoldOfSelected() tea.Cmd {
+	msg, _, ok := a.selectedMessageInFocus()
+	if !ok {
+		return nil
+	}
+	if !messages.HasFold(msg) {
+		return toastWithClear(a, "Nothing more to show on this message", 3*time.Second)
+	}
+	a.toggleFold(msg.TS)
+	return nil
 }
 
 // replyAvatarFunc is the reply-row avatar source, nil when reply_avatars

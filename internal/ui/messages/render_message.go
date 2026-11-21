@@ -129,6 +129,7 @@ func BlockkitContext(msg MessageItem, rc *RenderContext, emojiFlushes *[]func(io
 		MaxCols:     imgCtx.MaxCols,
 		UserNames:   rc.UserNames,
 		Slack:       CurrentLook().Slack,
+		Unfolded:    Unfolded(msg.TS),
 		MessageTS:   msg.TS,
 		Channel:     rc.ImageChannel,
 		// Mention resolution belongs to the host; plain control labels
@@ -595,6 +596,14 @@ func RenderMessage(msg MessageItem, width int, rc *RenderContext, opt RenderOpti
 		// without routing would mis-route clicks to msg.Attachments[0].
 		// See Phase 7 of the plan for the future wiring.
 		_ = res.Hits
+		for _, f := range res.Folds {
+			row := preAttachmentRows + startInBk + f.RowStart
+			imageHits = append(imageHits, entrylist.Hit{
+				RowStart: row, RowEnd: row + 1,
+				ColStart: contentColBase + f.ColStart, ColEnd: contentColBase + f.ColEnd,
+				Kind: entrylist.HitReaction, Key: ShowMoreKey,
+			})
+		}
 		bkInteractive = bkInteractive || res.Interactive
 	}
 	if bkInteractive {

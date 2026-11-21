@@ -349,6 +349,9 @@ func handleNormalMode(a *App, msg tea.KeyMsg) tea.Cmd {
 		}
 		return a.removePreviewOfSelected()
 
+	case key.Matches(msg, a.keys.ToggleFold):
+		return a.toggleFoldOfSelected()
+
 	case key.Matches(msg, a.keys.OpenPreview):
 		return a.openImagePreviewOfSelected()
 

@@ -783,7 +783,12 @@ func goldenSlackLookMessages() []messages.MessageItem {
 		},
 		{
 			TS: goldenTS(time.Minute), UserID: "U2", UserName: "bob",
-			Text: "worth a look: <https://git.example.com/acme/menus/pull/24|the pull request>", Timestamp: "9:01 AM", DateStr: "2026-03-15",
+			Text: "<https://app.example.com/p/issues#~(filters~(status~(equals~(~'OPEN))))|*2* open> on <https://git.example.com/acme/menus/pull/24|the pull request>", Timestamp: "9:01 AM", DateStr: "2026-03-15",
+			LegacyAttachments: []blockkit.LegacyAttachment{{
+				Color: "36a64f", Title: "#24 Group modifiers by station", TitleLink: "https://git.example.com/acme/menus/pull/24",
+				Text:   "## Context\nModifiers were listed flat.\n• Group them by station.\n• Keep the order the kitchen set.\nNothing else changes.\n## Testing\nTable tests for the grouping.",
+				Footer: "acme/menus",
+			}},
 			Reactions: []messages.ReactionItem{
 				{Emoji: "tada", Count: 3, UserIDs: []string{"U1", "U3", "U4"}},
 				{Emoji: "eyes", Count: 1, HasReacted: true, UserIDs: []string{"U1"}},

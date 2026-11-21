@@ -49,13 +49,16 @@
 - Opt-in Slack layout for the message pane (`[appearance] slack_style`): an author's messages sent within five minutes share one header, and a conversation shorter than the pane sits at its bottom, by the input. An edited message, one with no text, and the first unread one keep their own header
 - With `slack_style`, message content is drawn as Slack draws it:
   - A link with no label of its own loses its scheme, trailing slash and underline, is cut at 75 characters and follows `[appearance] link_glyph` (`🔗 store.example.com/app/1`). A labelled link keeps its label
-  - The preview of a pasted link is a framed card: bold title, up to three rows of description, the site, and the page's image at the card's right (kitty graphics, sixel or half-blocks). Attachments an app posts keep their coloured stripe
+  - The preview of a pasted link is a framed card: bold title, up to three rows of description, the site (with the author when the preview names one: `Vids | Sam Doe`), and the page's image at the card's right (kitty graphics, sixel or half-blocks). Attachments an app posts keep their coloured stripe
+  - An app's attachment shows what Slack shows of its text, five lines or 700 characters, then "Show more". A click on it, or `e` on the message, draws the rest and turns it into "Show less". Its linked title is in the link colour, and its service and author head it
   - An inline image carries its file name on the row above it; several side by side say how many (`3 files`)
   - A message of nothing but emoji (up to 23) is drawn two rows tall when emoji are images
   - Reactions show the count beside the emoji and end in a `+` pill; clicking it opens the reaction picker for that message. Reactions sit above the reply row
   - Times are upright, a day's label sits on a rule across the pane, and the unread line ends in `New`
   - An attachment's footer is dated as Slack dates it (`Yesterday at 12:45 PM`) in local time
+  - The lines of an app's section start at its edge, whatever spaces the app put before them; a code block keeps its indentation
 - A link in an attachment's footer shows its label and stays clickable, in either look
+- A link's address is never read as formatting: one full of `~`, `*` or `_` (a dashboard filter, say) draws as its label and opens whole. A label's own bold, italic, strikethrough and code are drawn inside the link
 - slk reads two of your Slack settings when it connects and follows them under `slack_style`: "Underline links to websites" and "Show JUMBOMOJI"
 - A DM, group DM or app is named without the channel's `#`: in the pane header, the status bar and the input's placeholder
 - Click any inline image (or press `Space` or `O` on the selected message) for a full-screen in-app preview; `Space` closes it again
@@ -142,6 +145,7 @@ See [[Terminal Compatibility|Terminal-Compatibility]] for which protocol your te
 - With `[appearance] full_names`, people are shown by full name wherever slk names them (sidebar, message authors, mentions, the input's placeholder), as Slack does by default. The cache keeps both names, so the option switches at the next start with nothing to refetch; a person cached before it existed is fetched once more when next seen
 - A group DM lists every other member by name, alphabetically as Slack does; members slk has not met are fetched in one batch at start
 - Close a DM, group DM or app's DM as Slack's "x" does: `x` on its sidebar row, or, with `[sidebar] slack_style`, a click on the "✕" that shows at the row's right end while the pointer is over it (a row with an unread badge shows the badge instead). The close goes to Slack, so the row leaves Slack's sidebar too, and a conversation closed or opened again in Slack leaves or rejoins slk's while it runs
+- A channel you leave, with `/leave` here or in Slack, leaves the sidebar while slk runs; the channel finder keeps a public one, to join it again
 - Opt-in Slack look (`[sidebar] slack_style`, `channel_indent`, `avatars`): headers start at their emoji, rows sit indented under them, each DM and app shows its avatar with the peer's presence on its corner (avatars need kitty graphics), and the row of what is open is filled. With `avatars`, a group DM shows the number of people in it on a square the size of an avatar, and mention badges are pills with a gap between the badges of adjacent rows
 - With `slack_style`, the Direct messages and Apps sections list unread conversations first, then the one with the newest message, with your DM with yourself last, as Slack does, and re-sort as messages arrive or are read. Other sections stay alphabetical
 - One row is marked as open: the Threads or Activity row while that view is up, else the open conversation's

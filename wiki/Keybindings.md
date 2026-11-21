@@ -65,6 +65,7 @@
 | `E` | Normal (message) | Edit your own message |
 | `D` | Normal (message) | Delete your own message (with confirmation) |
 | `x` | Normal (message) | Remove a link preview from your own message (with confirmation; a choice of previews when there are several) |
+| `e` | Normal (message) | Show the rest of a long attachment that `[appearance] slack_style` folds behind "Show more", or fold it again; a click on "Show more" or "Show less" does the same |
 | `x` | Normal (sidebar) | Close the DM, group DM or app under the cursor, as the "x" on its row in Slack does. It leaves the sidebar here and in Slack, and comes back when someone writes in it or you open it again (`Ctrl+n`, or the finder) |
 | `U` | Normal (message) | Mark selected message and everything newer as unread |
 | `S` | Normal (thread) | Save thread to markdown file (`~/.local/share/slk/exports/` or `$XDG_DATA_HOME/slk/exports/`) |

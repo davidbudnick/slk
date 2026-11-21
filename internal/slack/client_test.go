@@ -156,6 +156,7 @@ type mockSlackAPI struct {
 	getUsersInConversationContextFn func(ctx context.Context, params *slack.GetUsersInConversationParameters) ([]string, string, error)
 	openConversationContextFn       func(ctx context.Context, params *slack.OpenConversationParameters) (*slack.Channel, bool, bool, error)
 	closeConversationContextFn      func(ctx context.Context, channelID string) (bool, bool, error)
+	leaveConversationContextFn      func(ctx context.Context, channelID string) (bool, error)
 	searchMessagesFn                func(ctx context.Context, query string, params slack.SearchParameters) (*slack.SearchMessages, error)
 	getUserGroupsContextFn          func(ctx context.Context, options ...slack.GetUserGroupsOption) ([]slack.UserGroup, error)
 }
@@ -2660,6 +2661,37 @@ func TestCloseConversation(t *testing.T) {
 		return false, false, errors.New("channel_not_found")
 	}
 	if err := c.CloseConversation(context.Background(), "D456"); err == nil || !strings.Contains(err.Error(), "channel_not_found") {
+		t.Errorf("err = %v; want Slack's error wrapped", err)
+	}
+}
+
+func (m *mockSlackAPI) LeaveConversationContext(ctx context.Context, channelID string) (bool, error) {
+	if m.leaveConversationContextFn != nil {
+		return m.leaveConversationContextFn(ctx, channelID)
+	}
+	return false, nil
+}
+
+func TestLeaveChannel(t *testing.T) {
+	var left string
+	mock := &mockSlackAPI{
+		leaveConversationContextFn: func(_ context.Context, channelID string) (bool, error) {
+			left = channelID
+			return true, nil
+		},
+	}
+	c := &Client{api: mock}
+	if err := c.LeaveChannel(context.Background(), "C456"); err != nil {
+		t.Fatalf("leaving a channel the user is not in: %v", err)
+	}
+	if left != "C456" {
+		t.Errorf("left %q; want C456", left)
+	}
+
+	mock.leaveConversationContextFn = func(context.Context, string) (bool, error) {
+		return false, errors.New("cant_leave_general")
+	}
+	if err := c.LeaveChannel(context.Background(), "C456"); err == nil || !strings.Contains(err.Error(), "cant_leave_general") {
 		t.Errorf("err = %v; want Slack's error wrapped", err)
 	}
 }

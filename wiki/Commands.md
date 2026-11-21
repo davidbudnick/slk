@@ -95,7 +95,8 @@ slk does the same:
 | `/join #channel` | Same as `/open` |
 | `/msg @someone [message]` | Open your DM with that person and put the message in its composer, ready to edit and send. slk doesn't send it for you, and if the DM already has a draft slk keeps that draft and leaves the message out |
 | `/dm @someone [message]` | Same as `/msg` |
-| `/leave`, `/close`, `/part` | Not supported yet; slk says so |
+| `/leave` | Leave the channel you typed it in. Its row leaves the sidebar, here and in Slack, and the view moves back to the conversation you were in before. A private channel asks first, since only an invitation brings you back. In a DM or group DM it closes the conversation, as `x` on its sidebar row does. Takes no arguments |
+| `/close`, `/part` | Same as `/leave` |
 
 slk adds one of its own, first in the `/` menu:
 

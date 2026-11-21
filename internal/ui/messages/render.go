@@ -844,6 +844,9 @@ func RenderSlackMarkdownWith(text string, opts RenderSlackMarkdownOpts) string {
 func renderInlineFormattingWith(text string, opts RenderSlackMarkdownOpts) string {
 	userNames := opts.UserNames
 	channelNames := opts.ChannelNames
+	// Links first, out of the way: the passes below would read the "~",
+	// "*" and "_" of an address as markup.
+	text, links := stashLinks(text)
 	// Inline code (before bold/italic to avoid conflicts inside code)
 	text = inlineCodeRe.ReplaceAllStringFunc(text, func(match string) string {
 		inner := inlineCodeRe.FindStringSubmatch(match)[1]
@@ -870,31 +873,7 @@ func renderInlineFormattingWith(text string, opts RenderSlackMarkdownOpts) strin
 		return strikethroughStyle().Render(inner)
 	})
 
-	// Links with labels: <url|label> -> just the label, wrapped in an OSC 8
-	// hyperlink escape so it's clickable in modern terminals. We don't
-	// append the raw URL: every terminal slk targets supports OSC 8 (or its
-	// own URL auto-detection / shift-click), and the trailing "(url)"
-	// duplicated noise on every labeled link.
-	text = linkWithLabelRe.ReplaceAllStringFunc(text, func(match string) string {
-		parts := linkWithLabelRe.FindStringSubmatch(match)
-		// Decode the label's entities here: linkStyle underlines each
-		// rune separately, so the line-level slackEntityDecoder pass
-		// below can no longer see "&amp;" once it is styled.
-		url, label := parts[1], slackEntityDecoder.Replace(parts[2])
-		if isBareLabel(url, label) {
-			label = bareLinkLabel(url)
-		}
-		return osc8Hyperlink(url, linkStyle().Render(label))
-	})
-
-	// Bare links: <url> -> url, wrapped in OSC 8 so it's clickable.
-	// For mailto: URLs the visible text drops the scheme prefix so the
-	// user sees just the email address; the OSC 8 target keeps the
-	// mailto: scheme so terminal click-handlers can open a mail client.
-	text = linkBareRe.ReplaceAllStringFunc(text, func(match string) string {
-		url := linkBareRe.FindStringSubmatch(match)[1]
-		return osc8Hyperlink(url, linkStyle().Render(bareLinkLabel(url)))
-	})
+	text = restoreLinks(text, links)
 
 	// Date tokens: <!date^TS^FORMAT|FALLBACK> -> local-formatted date.
 	// Done before channel/user mentions; the token never contains

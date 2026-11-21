@@ -52,6 +52,7 @@ func TestSlackLook_LabelRepeatingTheAddress(t *testing.T) {
 		"<https://a.example/x|the docs>":                           "the docs",
 		"<https://a.example/x|…>":                                  "…",
 		"see <https://a.example/x/>":                               "see @ a.example/x",
+		"<https://www.a.example/watch?v=1|a.example/watch?v=1>":    "@ a.example/watch?v=1",
 	} {
 		if got := ansi.Strip(RenderSlackMarkdown(src, nil, nil)); got != want {
 			t.Errorf("%q drew %q, want %q", src, got, want)

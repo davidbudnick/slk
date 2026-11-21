@@ -101,11 +101,28 @@ var reduceWorkspace reducerFunc = func(a *App, msg tea.Msg) (tea.Cmd, bool) {
 	case ConversationClosedMsg:
 		if m.TeamID == a.activeTeamID {
 			a.removeClosedConversation(m.ChannelID)
+			return a.moveOffLeft(m.ChannelID), true
 		}
 		return nil, true
 
 	case ConversationCloseFailedMsg:
-		return a.conversationCloseFailed(m), true
+		return a.leaveFailed(m.ChannelID, "Could not close "+m.Name, m.Err), true
+
+	case leaveChannelMsg:
+		if m.TeamID == a.activeTeamID {
+			return a.leaveConversation(m.Item), true
+		}
+		return nil, true
+
+	case ChannelLeftMsg:
+		if m.TeamID == a.activeTeamID {
+			a.removeLeftChannel(m.ChannelID)
+			return a.moveOffLeft(m.ChannelID), true
+		}
+		return nil, true
+
+	case ChannelLeaveFailedMsg:
+		return a.leaveFailed(m.ChannelID, "Could not leave "+m.Name, m.Err), true
 
 	case SectionsRefreshedMsg:
 		if m.TeamID == a.activeTeamID {

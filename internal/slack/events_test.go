@@ -45,6 +45,7 @@ type mockEventHandler struct {
 	lastConversationOpenedID string
 	lastConversationOpenedCh slack.Channel
 	conversationsClosed      []string
+	channelsLeft             []string
 
 	sectionUpserted               *ChannelSectionUpserted
 	sectionDeletedID              string
@@ -179,6 +180,10 @@ func (m *mockEventHandler) OnConversationOpened(ch slack.Channel) {
 
 func (m *mockEventHandler) OnConversationClosed(channelID string) {
 	m.conversationsClosed = append(m.conversationsClosed, channelID)
+}
+
+func (m *mockEventHandler) OnChannelLeft(channelID string) {
+	m.channelsLeft = append(m.channelsLeft, channelID)
 }
 
 func (m *mockEventHandler) OnChannelSectionUpserted(ev ChannelSectionUpserted) {
@@ -883,6 +888,25 @@ func TestDispatch_ConversationClosed(t *testing.T) {
 	}
 	if h.lastConversationOpenedID != "" {
 		t.Errorf("a close event reached OnConversationOpened (%q)", h.lastConversationOpenedID)
+	}
+}
+
+// channel_left and group_left name the channel the user left, and are
+// not a close.
+func TestDispatch_ChannelLeft(t *testing.T) {
+	h := &mockEventHandler{}
+	for _, payload := range []string{
+		`{"type":"channel_left","channel":"C1"}`,
+		`{"type":"group_left","channel":"G1"}`,
+		`{"type":"channel_left"}`,
+	} {
+		dispatchWebSocketEvent([]byte(payload), h)
+	}
+	if want := []string{"C1", "G1"}; !slices.Equal(h.channelsLeft, want) {
+		t.Errorf("OnChannelLeft calls = %v; want %v", h.channelsLeft, want)
+	}
+	if len(h.conversationsClosed) != 0 {
+		t.Errorf("a leave reached OnConversationClosed: %v", h.conversationsClosed)
 	}
 }
 

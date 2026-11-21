@@ -65,9 +65,9 @@ var slashCommands = map[string]commandFunc{
 	"/join":   slashOpen("/join"),
 	"/msg":    slashMsg("/msg"),
 	"/dm":     slashMsg("/dm"),
-	"/leave":  slashUnsupported("/leave"),
-	"/close":  slashUnsupported("/close"),
-	"/part":   slashUnsupported("/part"),
+	"/leave":  slashLeave("/leave"),
+	"/close":  slashLeave("/close"),
+	"/part":   slashLeave("/part"),
 }
 
 // slashCommandList is what the composers' "/" menu offers: slk's own

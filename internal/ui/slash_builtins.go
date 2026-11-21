@@ -60,6 +60,31 @@ func slashUnsupported(name string) commandFunc {
 	}
 }
 
+// slashLeave takes the user out of the conversation the command was
+// typed in, as the web client's /leave does (client_app_commands.json:
+// "Leave a channel", no arguments; /close and /part are its aliases): a
+// channel is left, and a DM or group DM is closed. A private channel
+// asks first, since only an invitation brings it back. name is the
+// command as typed, for the usage line.
+func slashLeave(name string) commandFunc {
+	return func(a *App, args commandArgs) tea.Cmd {
+		if strings.TrimSpace(args.Rest) != "" {
+			return a.refuseCommand(args.Origin, "Usage: "+name)
+		}
+		item, ok := a.sidebarItem(args.Origin.channelID)
+		if !ok {
+			return a.refuseCommand(args.Origin, "You are not in this conversation")
+		}
+		if item.Type != "private" {
+			return a.leaveConversation(item)
+		}
+		leave := leaveChannelMsg{TeamID: args.Origin.teamID, Item: item}
+		a.openConfirmPrompt("Leave "+item.Name+"?", "It is private: only an invitation brings you back.",
+			func() tea.Msg { return leave })
+		return nil
+	}
+}
+
 // slashOpen switches to a channel, joining it first if needed, as the
 // web client's /open did (navigation only, no chat.command). /join is
 // its alias (client_app_commands.json: alias_of "/open").

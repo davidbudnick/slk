@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/gammons/slk/internal/core"
@@ -74,6 +75,36 @@ func (h *rtmEventHandler) OnConversationClosed(channelID string) {
 		return
 	}
 	h.program.Send(ui.ConversationClosedMsg{TeamID: h.workspaceID, ChannelID: channelID})
+}
+
+// OnChannelLeft handles channel_left and group_left: the user left a
+// channel on one of their clients, this one included. Its row leaves
+// the workspace's sidebar set and, when the workspace is active, the
+// live sidebar. The finder keeps a public channel as one to join, and
+// drops a private one, which only an invitation brings back.
+func (h *rtmEventHandler) OnChannelLeft(channelID string) {
+	if h.wsCtx == nil {
+		return
+	}
+	rows := len(h.wsCtx.Channels)
+	h.wsCtx.Channels = slices.DeleteFunc(h.wsCtx.Channels, func(item sidebar.ChannelItem) bool {
+		return item.ID == channelID && !sidebar.Closable(item)
+	})
+	if len(h.wsCtx.Channels) == rows {
+		return
+	}
+	h.wsCtx.FinderItems = slices.DeleteFunc(h.wsCtx.FinderItems, func(item core.ChannelFinderItem) bool {
+		return item.ID == channelID && item.Type == "private"
+	})
+	for i := range h.wsCtx.FinderItems {
+		if h.wsCtx.FinderItems[i].ID == channelID {
+			h.wsCtx.FinderItems[i].Joined = false
+		}
+	}
+	if h.program == nil || (h.isActive != nil && !h.isActive()) {
+		return
+	}
+	h.program.Send(ui.ChannelLeftMsg{TeamID: h.workspaceID, ChannelID: channelID})
 }
 
 // addConversation is OnConversationOpened without the UI message.
