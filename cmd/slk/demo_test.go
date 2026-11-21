@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -56,7 +58,7 @@ func TestDemoAppRendersItsFirstFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := newDemoApp(d)
+	app := newDemoApp(d, demoLook(t, ""))
 	deliverDemo(t, app, tea.WindowSizeMsg{Width: 120, Height: 40}, 0)
 	for _, msg := range d.StartupMsgs() {
 		deliverDemo(t, app, msg, 0)
@@ -85,7 +87,7 @@ func TestDemoImageOpensFullScreen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := newDemoApp(d)
+	app := newDemoApp(d, demoLook(t, ""))
 	deliverDemo(t, app, tea.WindowSizeMsg{Width: 120, Height: 40}, 0)
 	for _, msg := range d.StartupMsgs() {
 		deliverDemo(t, app, msg, 0)
@@ -127,5 +129,49 @@ func TestRunDemoRejectsUnknownImageProtocol(t *testing.T) {
 	t.Setenv("SLK_DEMO_IMAGES", "kitty")
 	if err := runDemo("hero"); err == nil || !strings.Contains(err.Error(), "SLK_DEMO_IMAGES") {
 		t.Fatalf("runDemo with SLK_DEMO_IMAGES=kitty = %v, want an error naming the variable", err)
+	}
+}
+
+// demoLook is demoSettings for path, failing the test on an error.
+func demoLook(t *testing.T, path string) uiSettings {
+	t.Helper()
+	s, err := demoSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// SLK_DEMO_LOOK takes a file's look settings and keeps the demo's clock;
+// an unreadable file is an error, and none keeps the demo's own look.
+func TestDemoSettingsFromALookFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "look.toml")
+	if err := os.WriteFile(path, []byte("[appearance]\ncompact = true\ntheme = \"dracula\"\n[sidebar]\nchannel_indent = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := demoLook(t, path)
+	if !s.Compact || s.SidebarStyle.Slack || s.ChannelIndent != 2 || s.Theme != "Dracula" || s.TimestampFormat != demo.TimestampFormat {
+		t.Errorf("settings from the file = %+v", s)
+	}
+	if err := os.WriteFile(path, []byte("[appearance]\ncompact = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if s := demoLook(t, path); s.Theme != "" {
+		t.Errorf("a file with no theme gave theme %q, want each workspace's own", s.Theme)
+	}
+	if err := os.WriteFile(path, []byte("[appearance]\ntheme = \"no such theme\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := demoSettings(path); err == nil || !strings.Contains(err.Error(), "no such theme") {
+		t.Errorf("an unknown theme gave err = %v", err)
+	}
+	if own := demoLook(t, ""); own.Compact || !own.ColoredUsernames || own.TimestampFormat != demo.TimestampFormat {
+		t.Errorf("the demo's own settings = %+v", own)
+	}
+	if err := os.WriteFile(path, []byte("[appearance\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := demoSettings(path); err == nil {
+		t.Error("a file that does not parse gave no error")
 	}
 }

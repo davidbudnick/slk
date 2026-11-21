@@ -37,6 +37,23 @@ func TestStartupMsgs(t *testing.T) {
 	}
 }
 
+func TestUseThemeReplacesEveryWorkspaceTheme(t *testing.T) {
+	d := testDemo(t)
+	d.UseTheme("Dracula")
+	if d.InitialTheme() != "Dracula" {
+		t.Errorf("InitialTheme = %q", d.InitialTheme())
+	}
+	for _, m := range d.StartupMsgs() {
+		if r, ok := m.(ui.WorkspaceReadyMsg); ok && r.Theme != "Dracula" {
+			t.Errorf("%s ready with theme %q", r.TeamID, r.Theme)
+		}
+	}
+	msg := d.services().workspace.Switch(teamDriftwood)
+	if sw, ok := msg.(ui.WorkspaceSwitchedMsg); !ok || sw.Theme != "Dracula" {
+		t.Errorf("switch = %#v", msg)
+	}
+}
+
 func TestInstallWiresAnApp(t *testing.T) {
 	testDemo(t).Install(ui.NewApp()) // must not panic; cmd/slk's smoke test renders it
 }

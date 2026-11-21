@@ -620,6 +620,15 @@ func (t *team) snapshot() teamSnapshot {
 	return s
 }
 
+// useTheme sets every team's theme to name.
+func (w *World) useTheme(name string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, t := range w.teams {
+		t.theme = name
+	}
+}
+
 // snapshots returns every team, in rail order.
 func (w *World) snapshots() []teamSnapshot {
 	w.mu.Lock()
