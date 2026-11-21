@@ -249,6 +249,11 @@ type Model struct {
 	// slackStyle groups an author's messages and anchors a short
 	// conversation to the bottom (SetSlackStyle).
 	slackStyle bool
+	// scrollAnchor is the message at the top of the window when older
+	// history was prepended, and how many of its rows were above the
+	// window; the next rebuild puts it back there (PrependMessages).
+	scrollAnchor       string
+	scrollAnchorWithin int
 }
 
 // SetFocused records whether the messages pane currently holds user focus
@@ -1110,10 +1115,39 @@ func (m *Model) PrependMessages(msgs []MessageItem) {
 		debuglog.Cache("messages.Model.PrependMessages: channel=%q count_before=%d count_added=%d added=[%s]",
 			m.channelName, len(m.messages), count, summarizeMessageItems(msgs))
 	}
+	m.rememberScrollAnchor()
 	m.messages = append(msgs, m.messages...)
 	m.selected += count
 	m.dropCache()
 	m.dirty()
+}
+
+// rememberScrollAnchor records the message at the top of the window, so
+// the rebuild after older history lands keeps it there instead of
+// drawing one frame at the new history's top.
+func (m *Model) rememberScrollAnchor() {
+	if m.cache == nil {
+		return
+	}
+	entries, offsets, y := m.list.Entries(), m.list.Offsets(), m.list.YOffset()
+	for i := range entries {
+		if entries[i].ID == "" || i+1 < len(entries) && offsets[i+1] <= y {
+			continue
+		}
+		m.scrollAnchor, m.scrollAnchorWithin = entries[i].ID, y-offsets[i]
+		return
+	}
+}
+
+// restoreScrollAnchor puts the remembered message back at the top of
+// the window, and keeps the cursor from snapping the window away.
+func (m *Model) restoreScrollAnchor() {
+	id := m.scrollAnchor
+	m.scrollAnchor = ""
+	if i, ok := m.list.IndexOf(id); ok && id != "" {
+		m.list.SetYOffset(m.list.Offsets()[i] + m.scrollAnchorWithin)
+		m.list.MarkSnapped(m.selected)
+	}
 }
 
 func (m *Model) EnterReactionNav() {
@@ -2026,6 +2060,7 @@ func (m *Model) buildCache(width int, keepPosition bool) {
 	}
 
 	m.list.SetEntries(entries, width, keepPosition)
+	m.restoreScrollAnchor()
 
 	if stats != nil {
 		debuglog.Perf("messages.buildCache.breakdown N=%d body=%s reactions(n=%d)=%s blockKit(n=%d)=%s legacy(n=%d, atts=%d)=%s [text=%s image=%s other=%s] img[cachedCheck(n=%d)=%s kitty(n=%d)=%s renderImage(n=%d)=%s placeholder(n=%d)=%s] attachments(n=%d)=%s borderWrap=%s plainLines=%s",
