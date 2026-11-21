@@ -92,16 +92,22 @@ func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, 
 
 	// Body lines — title, text, footer. Fields and image_url come in Task 13.
 	var body []string
+	if by := byline(a.ServiceName, a.AuthorName); ctx.Slack && by != "" {
+		body = append(body, lipgloss.NewStyle().Bold(true).Render(truncateToWidth(by, contentW)))
+	}
 	if a.Title != "" {
 		var t0 time.Time
 		if perf != nil {
 			t0 = time.Now()
 		}
 		title := a.Title
+		titleStyle := lipgloss.NewStyle().Bold(true)
 		if a.TitleLink != "" {
 			title = "\x1b]8;;" + a.TitleLink + "\x1b\\" + title + "\x1b]8;;\x1b\\"
+			if ctx.Slack {
+				titleStyle = titleStyle.Foreground(styles.Primary)
+			}
 		}
-		titleStyle := lipgloss.NewStyle().Bold(true)
 		if lipgloss.Width(title) > contentW {
 			title = truncateToWidth(title, contentW)
 		}
@@ -110,12 +116,23 @@ func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, 
 			perf.otherTotal += time.Since(t0)
 		}
 	}
+	foldRowInBody := -1
 	if a.Text != "" {
 		var t0 time.Time
 		if perf != nil {
 			t0 = time.Now()
 		}
-		body = append(body, renderTextLines(a.Text, ctx, contentW)...)
+		text := a.Text
+		short, folded := foldText(text)
+		folded = folded && ctx.Slack
+		if folded && !ctx.Unfolded {
+			text = short
+		}
+		body = append(body, renderTextLines(text, ctx, contentW)...)
+		if folded {
+			foldRowInBody = len(body)
+			body = append(body, foldRow(ctx.Unfolded))
+		}
 		if perf != nil {
 			perf.textTotal += time.Since(t0)
 		}
@@ -248,6 +265,13 @@ func appendLegacyAttachment(out *RenderResult, a LegacyAttachment, ctx Context, 
 	}
 	if perf != nil {
 		perf.otherTotal += time.Since(stripeT0)
+	}
+	if foldRowInBody >= 0 {
+		row := startRow + foldRowInBody
+		out.Folds = append(out.Folds, HitRect{
+			RowStart: row, RowEnd: row + 1,
+			ColStart: stripeCol, ColEnd: stripeCol + lipgloss.Width(body[foldRowInBody]),
+		})
 	}
 
 	// Adjust the image hit so its rows are absolute within out.Lines

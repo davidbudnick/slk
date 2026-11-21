@@ -33,23 +33,31 @@ var now = time.Now
 // isLinkPreview reports whether a is the plain preview Slack makes of a pasted link.
 func isLinkPreview(a LegacyAttachment) bool {
 	return (a.OriginalURL != "" || a.FromURL != "") && a.Title != "" && a.Color == "" &&
-		a.AuthorName == "" && a.Pretext == "" && a.Footer == "" &&
+		(a.AuthorName == "" || a.ServiceName != "") && a.Pretext == "" && a.Footer == "" &&
 		len(a.Blocks) == 0 && len(a.Fields) == 0 && len(a.Actions) == 0
 }
 
-// previewSite is the site named under a preview's text.
+// byline names an attachment's service and author as Slack heads one: "Site | Author".
+func byline(service, author string) string {
+	if service == "" || author == "" {
+		return service + author
+	}
+	return service + " | " + author
+}
+
+// previewSite is the site, and the author when there is one, named under a preview's text.
 func previewSite(a LegacyAttachment) string {
-	if a.ServiceName != "" {
-		return a.ServiceName
+	site := a.ServiceName
+	if site == "" {
+		raw := a.OriginalURL
+		if raw == "" {
+			raw = a.FromURL
+		}
+		if u, err := url.Parse(raw); err == nil {
+			site = u.Host
+		}
 	}
-	raw := a.OriginalURL
-	if raw == "" {
-		raw = a.FromURL
-	}
-	if u, err := url.Parse(raw); err == nil {
-		return u.Host
-	}
-	return ""
+	return byline(site, a.AuthorName)
 }
 
 // previewThumb is the URL and cell size of a preview's image, zero when it has none to draw.

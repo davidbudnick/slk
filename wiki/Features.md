@@ -46,13 +46,16 @@
 - Opt-in Slack layout for the message pane (`[appearance] slack_style`): an author's messages sent within five minutes share one header, and a conversation shorter than the pane sits at its bottom, by the input. An edited message, one with no text, and the first unread one keep their own header
 - With `slack_style`, message content is drawn as Slack draws it:
   - A link with no label of its own loses its scheme, trailing slash and underline, is cut at 75 characters and follows `[appearance] link_glyph` (`🔗 store.example.com/app/1`). A labelled link keeps its label
-  - The preview of a pasted link is a framed card: bold title, up to three rows of description, the site, and the page's image at the card's right (kitty graphics, sixel or half-blocks). Attachments an app posts keep their coloured stripe
+  - The preview of a pasted link is a framed card: bold title, up to three rows of description, the site (with the author when the preview names one: `Vids | Sam Doe`), and the page's image at the card's right (kitty graphics, sixel or half-blocks). Attachments an app posts keep their coloured stripe
+  - An app's attachment shows what Slack shows of its text, five lines or 700 characters, then "Show more". A click on it, or `e` on the message, draws the rest and turns it into "Show less". Its linked title is in the link colour, and its service and author head it
   - An inline image carries its file name on the row above it; several side by side say how many (`3 files`)
   - A message of nothing but emoji (up to 23) is drawn two rows tall when emoji are images
   - Reactions show the count beside the emoji and end in a `+` pill; clicking it opens the reaction picker for that message. Reactions sit above the reply row
   - Times are upright, a day's label sits on a rule across the pane, and the unread line ends in `New`
   - An attachment's footer is dated as Slack dates it (`Yesterday at 12:45 PM`) in local time
+  - The lines of an app's section start at its edge, whatever spaces the app put before them; a code block keeps its indentation
 - A link in an attachment's footer shows its label and stays clickable, in either look
+- A link's address is never read as formatting: one full of `~`, `*` or `_` (a dashboard filter, say) draws as its label and opens whole. A label's own bold, italic, strikethrough and code are drawn inside the link
 - slk reads two of your Slack settings when it connects and follows them under `slack_style`: "Underline links to websites" and "Show JUMBOMOJI"
 - A DM, group DM or app is named without the channel's `#`: in the pane header, the status bar and the input's placeholder
 - Click any inline image (or press `O` on the selected message) for a full-screen in-app preview

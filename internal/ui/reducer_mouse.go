@@ -424,6 +424,10 @@ func (a *App) toggleReactionAt(p contentPane, channelID string, items []messages
 				if emojiName == messages.AddReactionKey {
 					return a.openReactionPickerFor(p, channelID, items[idx]), true
 				}
+				if emojiName == messages.ShowMoreKey {
+					a.toggleFold(items[idx].TS)
+					return nil, true
+				}
 				return a.toggleReactionOnMessageItem(channelID, items[idx], emojiName), true
 			}
 		}
