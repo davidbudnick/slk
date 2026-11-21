@@ -67,6 +67,10 @@ func newDemo(scenario string, now time.Time, clock func() time.Time) (*Demo, err
 // before the first frame.
 func (d *Demo) InitialTheme() string { return d.world.snapshots()[0].theme }
 
+// UseTheme makes every workspace report theme name instead of its own;
+// call it before InitialTheme, StartupMsgs and Install.
+func (d *Demo) UseTheme(name string) { d.world.useTheme(name) }
+
 // Install wires the demo's workspaces and services into app.
 func (d *Demo) Install(app *ui.App) {
 	snaps := d.world.snapshots()

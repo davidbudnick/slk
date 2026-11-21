@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"image"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/pelletier/go-toml/v2"
 
 	"github.com/gammons/slk/internal/config"
 	"github.com/gammons/slk/internal/core"
@@ -25,7 +27,8 @@ import (
 // docs/superpowers/specs/2026-09-27-demo-mode-design.md.
 // SLK_DEMO_TRANSPARENT=1 turns on the transparent background, which a
 // user sets as [appearance] transparent_background. SLK_DEMO_LOOK names a
-// TOML file whose [appearance] and [sidebar] settings the demo takes.
+// TOML file whose [appearance] and [sidebar] settings the demo takes; a
+// theme set there replaces every workspace's own.
 func runDemo(scenario string) error {
 	d, err := demo.New(scenario, time.Now())
 	if err != nil {
@@ -34,6 +37,13 @@ func runDemo(scenario string) error {
 	proto, err := demoImageProtocol(os.Getenv("SLK_DEMO_IMAGES"))
 	if err != nil {
 		return err
+	}
+	settings, err := demoSettings(os.Getenv("SLK_DEMO_LOOK"))
+	if err != nil {
+		return err
+	}
+	if settings.Theme != "" {
+		d.UseTheme(settings.Theme)
 	}
 	styles.SetTransparentBackground(os.Getenv("SLK_DEMO_TRANSPARENT") == "1")
 	styles.Apply(d.InitialTheme(), core.Theme{})
@@ -51,10 +61,6 @@ func runDemo(scenario string) error {
 		// after each frame's text, in the frame it belongs to.
 		frames = imgpkg.NewSixelFrameStore()
 		opts = append(opts, tea.WithOutput(imgpkg.NewFrameOutput(os.Stdout, frames)))
-	}
-	settings, err := demoSettings(os.Getenv("SLK_DEMO_LOOK"))
-	if err != nil {
-		return err
 	}
 	app := newDemoApp(d, settings)
 	if frames != nil {
@@ -112,11 +118,42 @@ func demoSettings(path string) (uiSettings, error) {
 		if err != nil {
 			return uiSettings{}, fmt.Errorf("SLK_DEMO_LOOK: %w", err)
 		}
+		theme, err := demoTheme(path)
+		if err != nil {
+			return uiSettings{}, err
+		}
 		s = uiSettingsFromConfig(cfg)
-		s.Theme, s.ThemeOverrides = "", core.Theme{}
+		s.Theme, s.ThemeOverrides = theme, core.Theme{}
 	}
 	s.TimestampFormat = demo.TimestampFormat
 	return s, nil
+}
+
+// demoTheme is the built-in theme the look file at path names in
+// [appearance] theme, spelled as styles.ThemeNames has it, or "" when the
+// file names none and each workspace keeps its own.
+func demoTheme(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("SLK_DEMO_LOOK: %w", err)
+	}
+	var look struct {
+		Appearance struct {
+			Theme string `toml:"theme"`
+		} `toml:"appearance"`
+	}
+	if err := toml.Unmarshal(data, &look); err != nil {
+		return "", fmt.Errorf("SLK_DEMO_LOOK: %w", err)
+	}
+	if look.Appearance.Theme == "" {
+		return "", nil
+	}
+	for _, name := range styles.ThemeNames() {
+		if strings.EqualFold(name, look.Appearance.Theme) {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("SLK_DEMO_LOOK: unknown theme %q", look.Appearance.Theme)
 }
 
 // newDemoApp builds the demo's App with settings. It takes no token store

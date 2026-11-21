@@ -150,8 +150,20 @@ func TestDemoSettingsFromALookFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := demoLook(t, path)
-	if !s.Compact || s.SidebarStyle.Slack || s.ChannelIndent != 2 || s.Theme != "" || s.TimestampFormat != demo.TimestampFormat {
+	if !s.Compact || s.SidebarStyle.Slack || s.ChannelIndent != 2 || s.Theme != "Dracula" || s.TimestampFormat != demo.TimestampFormat {
 		t.Errorf("settings from the file = %+v", s)
+	}
+	if err := os.WriteFile(path, []byte("[appearance]\ncompact = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if s := demoLook(t, path); s.Theme != "" {
+		t.Errorf("a file with no theme gave theme %q, want each workspace's own", s.Theme)
+	}
+	if err := os.WriteFile(path, []byte("[appearance]\ntheme = \"no such theme\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := demoSettings(path); err == nil || !strings.Contains(err.Error(), "no such theme") {
+		t.Errorf("an unknown theme gave err = %v", err)
 	}
 	if own := demoLook(t, ""); own.Compact || !own.ColoredUsernames || own.TimestampFormat != demo.TimestampFormat {
 		t.Errorf("the demo's own settings = %+v", own)
